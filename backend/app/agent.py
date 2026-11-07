@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any, Dict, List, Optional
 import cactus
 
@@ -20,6 +21,11 @@ from app.tools.notification_tools import (
 
 logger = logging.getLogger("pocketai.agent")
 
+def sanitize_text(text: str) -> str:
+    """Normalize comma-separated amounts (e.g. 1,250 -> 1250) for robust parsing."""
+    cleaned = re.sub(r'(\d+),(\d+)', r'\1\2', text)
+    return cleaned.strip()
+
 class PocketAIAgent:
     def __init__(self, confidence_threshold: Optional[float] = None):
         self.confidence_threshold = (
@@ -39,15 +45,15 @@ class PocketAIAgent:
             classify_security_alert,
         ]
 
-        # Primary agent with all capabilities
+        # Use stateless=True so each query/command is evaluated cleanly without turn contamination
         self.agent = cactus.Cactus(
             tools=self.system_tools + self.notification_tools,
-            stateless=False
+            stateless=True
         )
 
     def process_query(self, user_text: str) -> AgentResponse:
         """Process voice/text command from the user and decide on execution."""
-        cleaned_text = user_text.strip()
+        cleaned_text = sanitize_text(user_text)
         if not cleaned_text:
             return AgentResponse(
                 status="unsupported",
@@ -108,7 +114,7 @@ class PocketAIAgent:
 
     def process_notification(self, title: str, text: str, package_name: str) -> Dict[str, Any]:
         """Analyze incoming notification for structured transactions, alerts, or spam."""
-        combined_text = f"Notification from {package_name}: {title} - {text}"
+        combined_text = sanitize_text(f"Notification from {package_name}: {title} - {text}")
         logger.info(f"Analyzing notification: {combined_text}")
 
         res = self.agent.complete(combined_text)
