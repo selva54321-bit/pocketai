@@ -8,7 +8,7 @@ import cactus
 def extract_transaction(
     type: Literal["debit", "credit", "transfer", "refund"],
     amount: float,
-    currency: str = "INR",
+    currency: Literal["INR", "USD", "EUR", "GBP"] = "INR",
     merchant: Optional[str] = None,
     account_tail: Optional[str] = None,
     date: Optional[str] = None
