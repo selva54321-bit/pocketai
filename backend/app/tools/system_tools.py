@@ -30,11 +30,11 @@ def set_battery_saver(enabled: bool):
     r"\bset brightness\b",
     r"\b(dim|brighten)\b.*\b(screen|display)\b"
 ])
-def set_brightness(level_percent: int):
+def set_brightness(level: int):
     """Set screen brightness percentage from 0 to 100."""
     return {
         "action": "set_brightness",
-        "level": max(0, min(100, int(level_percent)))
+        "level": max(0, min(100, int(level)))
     }
 
 @cactus.tool(triggers=[
