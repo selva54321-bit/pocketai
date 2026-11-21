@@ -32,9 +32,74 @@ export const AndroidNative = {
     return await AndroidOperator.setDoNotDisturb(enable);
   },
 
+  async toggleFlashlight(enable: boolean): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.toggleFlashlight(enable);
+  },
+
+  async adjustVolume(action: string, levelPercent: number = 50): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.adjustVolume(action, levelPercent);
+  },
+
+  async controlMedia(action: string): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.controlMedia(action);
+  },
+
   async startTimer(seconds: number, label: string = 'Timer', skipUi: boolean = false): Promise<string> {
     if (!this.isAvailable) throw new Error('AndroidOperator not available');
     return await AndroidOperator.startTimer(seconds, label, skipUi);
+  },
+
+  async setAlarm(hour: number, minute: number, label: string = 'Alarm', skipUi: boolean = false): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.setAlarm(hour, minute, label, skipUi);
+  },
+
+  async makeCall(contactOrNumber: string): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.makeCall(contactOrNumber);
+  },
+
+  async sendSms(recipient: string, message: string): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.sendSms(recipient, message);
+  },
+
+  async sendWhatsApp(recipient: string, message: string): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.sendWhatsApp(recipient, message);
+  },
+
+  async sendEmail(recipient: string, subject: string, body: string): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.sendEmail(recipient, subject, body);
+  },
+
+  async navigateTo(destination: string): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.navigateTo(destination);
+  },
+
+  async searchWeb(query: string): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.searchWeb(query);
+  },
+
+  async searchYouTube(query: string): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.searchYouTube(query);
+  },
+
+  async openSetting(settingName: string): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.openSetting(settingName);
+  },
+
+  async copyToClipboard(text: string): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.copyToClipboard(text);
   },
 
   async openBatterySaverSettings(): Promise<string> {
@@ -42,7 +107,7 @@ export const AndroidNative = {
     return await AndroidOperator.openBatterySaverSettings();
   },
 
-  // Execute resolved action from Needle 3 tool call
+  // Central dispatch for resolved Needle 3 tool actions
   async executeResolvedAction(action: Record<string, any>): Promise<string> {
     const actionType = action.android_action;
     switch (actionType) {
@@ -52,10 +117,36 @@ export const AndroidNative = {
         return await this.setBrightness(action.percent);
       case 'SET_DND':
         return await this.setDoNotDisturb(action.enabled);
+      case 'TOGGLE_FLASHLIGHT':
+        return await this.toggleFlashlight(action.enabled);
+      case 'ADJUST_VOLUME':
+        return await this.adjustVolume(action.action, action.level_percent || 50);
+      case 'CONTROL_MEDIA':
+        return await this.controlMedia(action.action);
       case 'START_TIMER':
         return await this.startTimer(action.length_seconds, action.message, action.skip_ui);
+      case 'SET_ALARM':
+        return await this.setAlarm(action.hour, action.minute, action.label, action.skip_ui);
+      case 'MAKE_CALL':
+        return await this.makeCall(action.contact_or_number);
+      case 'SEND_SMS':
+        return await this.sendSms(action.recipient, action.message);
+      case 'SEND_WHATSAPP':
+        return await this.sendWhatsApp(action.recipient, action.message);
+      case 'SEND_EMAIL':
+        return await this.sendEmail(action.recipient, action.subject, action.body);
+      case 'NAVIGATE_TO':
+        return await this.navigateTo(action.destination);
+      case 'SEARCH_WEB':
+        return await this.searchWeb(action.query);
+      case 'SEARCH_YOUTUBE':
+        return await this.searchYouTube(action.query);
+      case 'OPEN_SETTING':
+        return await this.openSetting(action.setting_name);
       case 'SET_BATTERY_SAVER':
         return await this.openBatterySaverSettings();
+      case 'COPY_CLIPBOARD':
+        return await this.copyToClipboard(action.text);
       default:
         throw new Error(`Unsupported android action: ${actionType}`);
     }
@@ -94,6 +185,40 @@ export const AndroidNative = {
       const sub = speechEmitter.addListener('onSpeechError', (e: { message: string }) => {
         callback(e.message);
       });
+      return () => sub.remove();
+    }
+  },
+
+  // Wake Word ('Hey Jackie') Controls
+  wakeWord: {
+    async start(): Promise<string> {
+      if (!AndroidOperator) throw new Error('AndroidOperator missing');
+      return await AndroidOperator.startWakeWordService();
+    },
+
+    async stop(): Promise<string> {
+      if (!AndroidOperator) throw new Error('AndroidOperator missing');
+      return await AndroidOperator.stopWakeWordService();
+    },
+
+    async setForegroundState(isForeground: boolean): Promise<boolean> {
+      if (!AndroidOperator) return false;
+      return await AndroidOperator.setWakeWordForegroundState(isForeground);
+    },
+
+    async isRunning(): Promise<boolean> {
+      if (!AndroidOperator) return false;
+      return await AndroidOperator.isWakeWordServiceRunning();
+    },
+
+    async getInitialCommand(): Promise<{ wakeWordTriggered: boolean; commandText: string }> {
+      if (!AndroidOperator) return { wakeWordTriggered: false, commandText: '' };
+      return await AndroidOperator.getInitialWakeWordCommand();
+    },
+
+    onDetected(callback: (event: { wakeWordTriggered: boolean; commandText: string }) => void) {
+      if (!operatorEmitter) return () => {};
+      const sub = operatorEmitter.addListener('onWakeWordDetected', callback);
       return () => sub.remove();
     }
   }
