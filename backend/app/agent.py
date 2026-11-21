@@ -31,6 +31,7 @@ from app.tools.notification_tools import (
     extract_transaction,
     classify_promotional,
     classify_security_alert,
+    check_notifications,
 )
 
 logger = logging.getLogger("pocketai.agent")
@@ -74,6 +75,7 @@ class PocketAIAgent:
             extract_transaction,
             classify_promotional,
             classify_security_alert,
+            check_notifications,
         ]
 
         # Use stateless=True so each query/command is evaluated cleanly without turn contamination
