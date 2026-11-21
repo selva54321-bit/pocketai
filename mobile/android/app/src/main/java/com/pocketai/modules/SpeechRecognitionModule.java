@@ -7,6 +7,7 @@ import android.os.Looper;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 
@@ -21,9 +22,11 @@ import com.facebook.react.modules.core.DeviceEventManagerModule;
 import java.util.ArrayList;
 
 public class SpeechRecognitionModule extends ReactContextBaseJavaModule implements RecognitionListener {
+    private static final String TAG = "SpeechRecognition";
     private final ReactApplicationContext reactContext;
     private SpeechRecognizer speechRecognizer;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private boolean isCurrentlyListening = false;
 
     public SpeechRecognitionModule(ReactApplicationContext context) {
         super(context);
@@ -45,17 +48,46 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
     }
 
     @ReactMethod
+    public void addListener(String eventName) {
+        // Required for RN built-in Event Emitter
+    }
+
+    @ReactMethod
+    public void removeListeners(Integer count) {
+        // Required for RN built-in Event Emitter
+    }
+
+    private void cleanupRecognizer() {
+        if (speechRecognizer != null) {
+            try {
+                speechRecognizer.stopListening();
+                speechRecognizer.cancel();
+                speechRecognizer.destroy();
+            } catch (Exception e) {
+                Log.w(TAG, "Error cleaning recognizer: " + e.getMessage());
+            }
+            speechRecognizer = null;
+        }
+        isCurrentlyListening = false;
+    }
+
+    @ReactMethod
     public void startListening(Promise promise) {
         mainHandler.post(() -> {
             try {
+                if (isCurrentlyListening && speechRecognizer != null) {
+                    Log.i(TAG, "SpeechRecognizer is already active, ignoring duplicate start request");
+                    promise.resolve("Already listening");
+                    return;
+                }
+
                 if (!SpeechRecognizer.isRecognitionAvailable(reactContext)) {
+                    Log.e(TAG, "SpeechRecognizer is NOT available on this device");
                     promise.reject("UNAVAILABLE", "Speech recognition is not available on this device.");
                     return;
                 }
 
-                if (speechRecognizer != null) {
-                    speechRecognizer.destroy();
-                }
+                cleanupRecognizer();
 
                 speechRecognizer = SpeechRecognizer.createSpeechRecognizer(reactContext);
                 speechRecognizer.setRecognitionListener(this);
@@ -64,10 +96,15 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
                 intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
                 intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
                 intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+                intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, reactContext.getPackageName());
 
                 speechRecognizer.startListening(intent);
+                isCurrentlyListening = true;
+                Log.i(TAG, "SpeechRecognizer started listening successfully");
                 promise.resolve("Listening started");
             } catch (Exception e) {
+                cleanupRecognizer();
+                Log.e(TAG, "startListening failed: " + e.getMessage(), e);
                 promise.reject("START_ERROR", e.getMessage());
             }
         });
@@ -77,11 +114,11 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
     public void stopListening(Promise promise) {
         mainHandler.post(() -> {
             try {
-                if (speechRecognizer != null) {
-                    speechRecognizer.stopListening();
-                }
+                Log.i(TAG, "stopListening invoked");
+                cleanupRecognizer();
                 promise.resolve("Listening stopped");
             } catch (Exception e) {
+                Log.e(TAG, "stopListening failed: " + e.getMessage(), e);
                 promise.reject("STOP_ERROR", e.getMessage());
             }
         });
@@ -90,6 +127,7 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
     // RecognitionListener callbacks
     @Override
     public void onReadyForSpeech(Bundle params) {
+        Log.i(TAG, "onReadyForSpeech");
         WritableMap map = Arguments.createMap();
         map.putString("status", "ready");
         sendEvent("onSpeechReady", map);
@@ -97,21 +135,22 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
 
     @Override
     public void onBeginningOfSpeech() {
+        Log.i(TAG, "onBeginningOfSpeech");
         WritableMap map = Arguments.createMap();
         map.putString("status", "speaking");
         sendEvent("onSpeechStart", map);
     }
 
     @Override
-    public void onRmsChanged(float rmsdB) {
-        // Can be used for audio waveform animation
-    }
+    public void onRmsChanged(float rmsdB) {}
 
     @Override
     public void onBufferReceived(byte[] buffer) {}
 
     @Override
     public void onEndOfSpeech() {
+        Log.i(TAG, "onEndOfSpeech");
+        isCurrentlyListening = false;
         WritableMap map = Arguments.createMap();
         map.putString("status", "ended");
         sendEvent("onSpeechEnd", map);
@@ -119,21 +158,23 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
 
     @Override
     public void onError(int error) {
+        Log.w(TAG, "onError code: " + error);
+        cleanupRecognizer();
         WritableMap map = Arguments.createMap();
         map.putInt("error", error);
-        map.putString("message", "Speech recognition error code: " + error);
+        map.putString("message", "Speech recognition code: " + error);
         sendEvent("onSpeechError", map);
     }
 
     @Override
     public void onResults(Bundle results) {
+        isCurrentlyListening = false;
         ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+        String recognized = (matches != null && !matches.isEmpty()) ? matches.get(0) : "";
+        Log.i(TAG, "onResults: '" + recognized + "'");
+        cleanupRecognizer();
         WritableMap map = Arguments.createMap();
-        if (matches != null && !matches.isEmpty()) {
-            map.putString("text", matches.get(0));
-        } else {
-            map.putString("text", "");
-        }
+        map.putString("text", recognized);
         sendEvent("onSpeechResult", map);
     }
 
@@ -141,8 +182,10 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
     public void onPartialResults(Bundle partialResults) {
         ArrayList<String> matches = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
         if (matches != null && !matches.isEmpty()) {
+            String partial = matches.get(0);
+            Log.d(TAG, "onPartialResults: '" + partial + "'");
             WritableMap map = Arguments.createMap();
-            map.putString("partialText", matches.get(0));
+            map.putString("partialText", partial);
             sendEvent("onSpeechPartial", map);
         }
     }
