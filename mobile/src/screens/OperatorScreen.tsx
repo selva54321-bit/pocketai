@@ -247,11 +247,11 @@ export const OperatorScreen: React.FC = () => {
       setInputText(partial);
     });
 
-    const unsubError = (err: any) => {
-      console.log('[PocketAI] Speech error / timeout:', JSON.stringify(err));
+    const unsubError = AndroidNative.speech.onError((errMsg: string) => {
+      console.log('[PocketAI] Speech error / timeout:', errMsg);
       setIsListening(false);
       isListeningRef.current = false;
-    };
+    });
 
     return () => {
       appStateSub.remove();
