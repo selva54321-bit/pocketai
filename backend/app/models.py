@@ -38,3 +38,6 @@ class NotificationAnalysisResponse(BaseModel):
     category: str  # transaction, alert, spam, personal, system
     summary: Optional[str] = None
     confidence: float
+
+class BatchNotificationRequest(BaseModel):
+    notifications: List[Dict[str, Any]] = Field(default_factory=list)
