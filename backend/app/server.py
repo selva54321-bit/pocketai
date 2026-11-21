@@ -11,7 +11,9 @@ from app.models import (
     AgentResponse,
     NotificationPayload,
     NotificationAnalysisResponse,
+    BatchNotificationRequest,
 )
+from app.tools.notification_scorer import prioritize_notifications
 
 logging.basicConfig(
     level=logging.INFO,
@@ -102,6 +104,16 @@ def handle_notification(payload: NotificationPayload):
         )
     except Exception as e:
         logger.error(f"Error handling notification: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/notifications/prioritize")
+def handle_prioritize_notifications(payload: BatchNotificationRequest):
+    """Mathematically rank active device notifications using decay, category, and trust weights."""
+    try:
+        ranked = prioritize_notifications(payload.notifications)
+        return ranked
+    except Exception as e:
+        logger.error(f"Error prioritizing notifications: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 class ConnectionManager:
