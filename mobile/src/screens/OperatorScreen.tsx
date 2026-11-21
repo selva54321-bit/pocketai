@@ -28,6 +28,7 @@ const ACTION_CATEGORIES: ActionCategory[] = [
     category: '📱 Hardware & Voice Trigger',
     items: [
       'Say "Hey Jackie" from home screen.',
+      'Check my notifications.',
       'Turn on flashlight.',
       'Turn volume up.',
       'Set brightness to 40%.',
