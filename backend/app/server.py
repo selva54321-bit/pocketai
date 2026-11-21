@@ -56,7 +56,7 @@ def handle_query(req: AgentRequest):
                 call.arguments["_resolved_android"] = ActionExecutor.resolve_action(
                     call.name, call.arguments
                 )
-        if response.proposed_call:
+        if response.proposed_call and "_resolved_android" not in response.proposed_call.arguments:
             response.proposed_call.arguments["_resolved_android"] = ActionExecutor.resolve_action(
                 response.proposed_call.name, response.proposed_call.arguments
             )
@@ -145,7 +145,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         call.arguments["_resolved_android"] = ActionExecutor.resolve_action(
                             call.name, call.arguments
                         )
-                if response.proposed_call:
+                if response.proposed_call and "_resolved_android" not in response.proposed_call.arguments:
                     response.proposed_call.arguments["_resolved_android"] = ActionExecutor.resolve_action(
                         response.proposed_call.name, response.proposed_call.arguments
                     )
