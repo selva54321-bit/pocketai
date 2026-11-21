@@ -1,4 +1,5 @@
 import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
+import { prioritizeNotifications } from '../utils/notificationScorer';
 
 const { AndroidOperator, SpeechRecognition } = NativeModules;
 const speechEmitter = SpeechRecognition ? new NativeEventEmitter(SpeechRecognition) : null;
@@ -11,6 +12,7 @@ export interface SystemPermissions {
 
 export const AndroidNative = {
   isAvailable: Platform.OS === 'android' && Boolean(AndroidOperator),
+  onNavigateTab: null as (((tab: 'operator' | 'notifications') => void) | null),
 
   async checkPermissions(): Promise<SystemPermissions> {
     if (!this.isAvailable) return { canWriteSettings: false, hasDndPolicy: false };
@@ -109,7 +111,8 @@ export const AndroidNative = {
 
   // Central dispatch for resolved Needle 3 tool actions
   async executeResolvedAction(action: Record<string, any>): Promise<string> {
-    const actionType = action.android_action;
+    const rawAction = action.android_action || action.action || action.name || '';
+    const actionType = String(rawAction).toUpperCase().trim();
     switch (actionType) {
       case 'OPEN_APP':
         return await this.openApp(action.package_name);
@@ -147,8 +150,36 @@ export const AndroidNative = {
         return await this.openBatterySaverSettings();
       case 'COPY_CLIPBOARD':
         return await this.copyToClipboard(action.text);
+      case 'CHECK_NOTIFICATIONS':
+      case 'CHECK_NOTIFICATION':
+      case 'READ_NOTIFICATIONS': {
+        const notifs = await this.notifications.getActive();
+        const prioritized = prioritizeNotifications(notifs);
+        const important = prioritized.filter((n) => n.score >= 50);
+        if (this.onNavigateTab) {
+          this.onNavigateTab('notifications');
+        }
+        if (important.length === 0) {
+          return `Checked notifications (${prioritized.length} active, 0 critical). Opened Notifications screen.`;
+        }
+        const topSummary = important
+          .slice(0, 2)
+          .map((n) => `[${n.score} pts] ${n.title}`)
+          .join('; ');
+        return `Found ${important.length} important notifications (${topSummary}). Opened Notifications.`;
+      }
+      case 'NAVIGATE_SCREEN': {
+        const screen = String(action.screen || '').toLowerCase();
+        if (screen === 'notifications' || screen === 'notification') {
+          if (this.onNavigateTab) {
+            this.onNavigateTab('notifications');
+          }
+          return 'Opened Notifications screen.';
+        }
+        return `Navigated to ${action.screen}`;
+      }
       default:
-        throw new Error(`Unsupported android action: ${actionType}`);
+        throw new Error(`Unsupported android action: ${rawAction || actionType}`);
     }
   },
 
