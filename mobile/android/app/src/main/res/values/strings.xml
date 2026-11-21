@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">Hello App Display Name</string>
+    <string name="app_name">PocketAI</string>
+    <string name="voice_assistant_shortcut">Voice Operator</string>
 </resources>
