@@ -1,0 +1,138 @@
+# =============================================================================
+# Root .gitignore for PocketAI (Monorepo: Backend & React Native Mobile)
+# =============================================================================
+
+# OS Artifacts
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# Editors and IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+*.iml
+
+# Environment Variables & Secrets
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
+
+# Temporary & Scratch
+PocketAIApp/
+*.log
+*.tmp
+*.bak
+
+# =============================================================================
+# Python & Backend (FastAPI / Needle / Cactus)
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+.env/
+
+# Pytest / Testing / Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+htmlcov/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+
+# Cactus / Needle model cache
+*.cact
+needle*.cact
+
+# =============================================================================
+# Mobile & React Native (Node.js & Metro)
+# =============================================================================
+node_modules/
+.npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+lerna-debug.log*
+.expo/
+.metro-health-check*
+
+# React Native bundle artifacts
+*.jsbundle
+
+# =============================================================================
+# Android Build Artifacts
+# =============================================================================
+**/android/.gradle/
+**/android/build/
+**/android/app/build/
+**/android/local.properties
+**/android/.cxx/
+**/android/app/.cxx/
+**/android/app/.externalNativeBuild/
+**/android/captures/
+**/.externalNativeBuild/
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+
+# Android Studio / IntelliJ
+**/android/.idea/
+**/android/*.iml
+**/android/app/*.iml
+
+# Android Signing / Keystores (preserve debug keystore, ignore private keys)
+*.keystore
+*.jks
+!mobile/android/app/debug.keystore
+
+# =============================================================================
+# iOS Build Artifacts (if added in the future)
+# =============================================================================
+**/ios/Pods/
+**/ios/build/
+**/ios/DerivedData/
+*.xcworkspace
+*.xcuserdatad
