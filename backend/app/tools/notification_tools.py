@@ -48,3 +48,18 @@ def classify_security_alert(service: str, code: Optional[str] = None, urgency: L
         "urgency": urgency,
         "priority": "critical"
     }
+
+@cactus.tool(triggers=[
+    r"\b(check|read|show|list|get|what are)\s+(my\s+)?(important\s+)?notifications\b",
+    r"\b(any\s+new\s+notifications|unread\s+notifications|notification\s+summary|check\s+alerts)\b"
+])
+def check_notifications(
+    min_priority: Literal["all", "high", "critical"] = "high",
+    category_filter: Optional[Literal["all", "transaction", "security", "messages"]] = "all"
+):
+    """Retrieve and prioritize active device notifications, filtering out promotional spam."""
+    return {
+        "event_type": "check_notifications",
+        "min_priority": min_priority,
+        "category_filter": category_filter
+    }
