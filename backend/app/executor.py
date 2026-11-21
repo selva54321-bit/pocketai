@@ -211,7 +211,7 @@ class ActionExecutor:
             }
 
         # 20. Check Notifications
-        elif call_name == "check_notifications":
+        elif call_name in ("check_notifications", "check_notification", "read_notifications"):
             min_priority = clean_args.get("min_priority", "high")
             category_filter = clean_args.get("category_filter", "all")
             return {
