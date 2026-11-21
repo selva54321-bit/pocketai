@@ -7,11 +7,25 @@ from app.config import settings
 from app.models import AgentResponse, FunctionCall
 from app.tools.system_tools import (
     open_application,
-    open_timetable,
     set_battery_saver,
     set_brightness,
     set_do_not_disturb,
+    toggle_flashlight,
+    adjust_volume,
+    open_system_setting,
     start_timer,
+    set_alarm,
+    make_phone_call,
+    send_sms,
+    send_whatsapp,
+    send_email,
+    navigate_to,
+    search_web,
+    search_youtube,
+    control_media,
+    take_note,
+    copy_to_clipboard,
+    open_timetable,
 )
 from app.tools.notification_tools import (
     extract_transaction,
@@ -22,8 +36,11 @@ from app.tools.notification_tools import (
 logger = logging.getLogger("pocketai.agent")
 
 def sanitize_text(text: str) -> str:
-    """Normalize comma-separated amounts (e.g. 1,250 -> 1250) for robust parsing."""
+    """Normalize user voice/text query for optimal token matching."""
+    # Normalize comma-separated numbers (1,250 -> 1250)
     cleaned = re.sub(r'(\d+),(\d+)', r'\1\2', text)
+    # Normalize wi-fi / wifi
+    cleaned = re.sub(r'\bwi-fi\b', 'wifi', cleaned, flags=re.IGNORECASE)
     return cleaned.strip()
 
 class PocketAIAgent:
@@ -36,7 +53,21 @@ class PocketAIAgent:
             set_battery_saver,
             set_brightness,
             set_do_not_disturb,
+            toggle_flashlight,
+            adjust_volume,
+            open_system_setting,
             start_timer,
+            set_alarm,
+            make_phone_call,
+            send_sms,
+            send_whatsapp,
+            send_email,
+            navigate_to,
+            search_web,
+            search_youtube,
+            control_media,
+            take_note,
+            copy_to_clipboard,
             open_timetable,
         ]
         self.notification_tools = [
@@ -78,32 +109,34 @@ class PocketAIAgent:
             "peak_ram_mb": raw_res.get("peak_ram_mb")
         }
 
-        # Decision threshold logic
-        if calls and confidence >= self.confidence_threshold:
-            # Action is confident: Execute immediately
+        # Intuitive Operator Execution Logic:
+        # 1. If Needle matches a tool (calls), execute it directly!
+        # 2. If no direct call but a candidate was held (suppressed_calls), prompt for confirmation.
+        # 3. Otherwise, return unsupported.
+        if calls:
+            primary_call = calls[0]
+            action_desc = primary_call.name.replace("_", " ")
             return AgentResponse(
                 status="executed",
                 confidence=confidence,
                 reasoning=reasoning,
                 calls=calls,
-                message=f"Executing {calls[0].name.replace('_', ' ')}",
+                message=f"Executing {action_desc}",
                 telemetry=telemetry
             )
-        elif calls or held:
-            # Uncertain or candidate held: Request confirmation
-            candidate = calls[0] if calls else held[0]
+        elif held:
+            candidate = held[0]
             action_desc = candidate.name.replace("_", " ")
             return AgentResponse(
                 status="needs_confirmation",
                 confidence=confidence,
                 reasoning=reasoning,
                 proposed_call=candidate,
-                calls=calls,
+                calls=[],
                 message=f"Did you mean to {action_desc}? Tap to confirm.",
                 telemetry=telemetry
             )
         else:
-            # Nothing matched
             return AgentResponse(
                 status="unsupported",
                 confidence=confidence,
