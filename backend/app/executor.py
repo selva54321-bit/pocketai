@@ -210,6 +210,17 @@ class ActionExecutor:
                 "params": {"day": day}
             }
 
+        # 20. Check Notifications
+        elif call_name == "check_notifications":
+            min_priority = clean_args.get("min_priority", "high")
+            category_filter = clean_args.get("category_filter", "all")
+            return {
+                "android_action": "CHECK_NOTIFICATIONS",
+                "min_priority": min_priority,
+                "category_filter": category_filter,
+                "screen": "Notifications"
+            }
+
         return {
             "android_action": "UNKNOWN",
             "call_name": call_name,
