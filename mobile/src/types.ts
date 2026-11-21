@@ -25,6 +25,10 @@ export interface NotificationPayload {
   text: string;
   timestamp?: number;
   id?: string;
+  category?: string;
+  subText?: string;
+  isOngoing?: boolean;
+  isClearable?: boolean;
 }
 
 export interface ParsedTransaction {
@@ -44,4 +48,30 @@ export interface NotificationAnalysis {
   summary?: string;
   confidence: number;
   raw: NotificationPayload;
+}
+
+export type PriorityTier = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+
+export interface ScoreBreakdown {
+  categoryScore: number;
+  recencyScore: number;
+  appScore: number;
+  contentScore: number;
+  frequencyPenalty: number;
+  reasons: string[];
+}
+
+export interface PrioritizedNotification {
+  id: string;
+  packageName: string;
+  title: string;
+  text: string;
+  subText?: string;
+  postTime: number;
+  score: number;
+  tier: PriorityTier;
+  breakdown: ScoreBreakdown;
+  isOngoing?: boolean;
+  isClearable?: boolean;
+  analysis?: NotificationAnalysis;
 }
