@@ -1,10 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SafeAreaView, StyleSheet, View, Text, TouchableOpacity, StatusBar } from 'react-native';
 import { OperatorScreen } from './screens/OperatorScreen';
 import { NotificationsScreen } from './screens/NotificationsScreen';
+import { AndroidNative } from './native/AndroidOperator';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'operator' | 'notifications'>('operator');
+
+  useEffect(() => {
+    // Connect native operator tab navigation handler
+    AndroidNative.onNavigateTab = (tab: 'operator' | 'notifications') => {
+      console.log(`[PocketAI] Navigating to tab: ${tab}`);
+      setActiveTab(tab);
+    };
+    return () => {
+      AndroidNative.onNavigateTab = null;
+    };
+  }, []);
 
   return (
     <SafeAreaView style={styles.safeArea}>
