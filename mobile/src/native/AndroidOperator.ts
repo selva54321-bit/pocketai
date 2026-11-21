@@ -221,5 +221,52 @@ export const AndroidNative = {
       const sub = operatorEmitter.addListener('onWakeWordDetected', callback);
       return () => sub.remove();
     }
+  },
+
+  // System Notifications
+  notifications: {
+    async getActive(): Promise<any[]> {
+      if (!AndroidOperator) return [];
+      const raw = await AndroidOperator.getActiveNotifications();
+      return (raw || []).map((item: any) => ({
+        id: item.id,
+        package_name: item.packageName,
+        title: item.title,
+        text: item.text,
+        subText: item.subText,
+        timestamp: item.postTime,
+        category: item.category,
+        isOngoing: item.isOngoing,
+        isClearable: item.isClearable,
+      }));
+    },
+
+    async isEnabled(): Promise<boolean> {
+      if (!AndroidOperator) return false;
+      return await AndroidOperator.isNotificationListenerEnabled();
+    },
+
+    async openSettings(): Promise<string> {
+      if (!AndroidOperator) throw new Error('AndroidOperator missing');
+      return await AndroidOperator.openNotificationListenerSettings();
+    },
+
+    onReceived(callback: (payload: any) => void) {
+      if (!operatorEmitter) return () => {};
+      const sub = operatorEmitter.addListener('onNotificationReceived', (raw: any) => {
+        callback({
+          id: raw.id,
+          package_name: raw.packageName,
+          title: raw.title,
+          text: raw.text,
+          subText: raw.subText,
+          timestamp: raw.postTime,
+          category: raw.category,
+          isOngoing: raw.isOngoing,
+          isClearable: raw.isClearable,
+        });
+      });
+      return () => sub.remove();
+    }
   }
 };
