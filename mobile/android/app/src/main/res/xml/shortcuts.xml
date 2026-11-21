@@ -1,0 +1,14 @@
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="voice_assist_shortcut"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/voice_assistant_shortcut"
+        android:shortcutLongLabel="@string/voice_assistant_shortcut">
+        <intent
+            android:action="android.intent.action.VOICE_COMMAND"
+            android:targetPackage="com.pocketai"
+            android:targetClass="com.pocketai.MainActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+</shortcuts>
