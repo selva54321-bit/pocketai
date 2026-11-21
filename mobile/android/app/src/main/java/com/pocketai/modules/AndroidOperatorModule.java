@@ -22,6 +22,7 @@ import android.util.Log;
 import android.view.KeyEvent;
 
 import androidx.annotation.NonNull;
+import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 
 import com.facebook.react.bridge.Arguments;
@@ -29,9 +30,13 @@ import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
+import com.pocketai.services.NotificationListener;
 import com.pocketai.services.WakeWordService;
+
+import java.util.Set;
 
 public class AndroidOperatorModule extends ReactContextBaseJavaModule {
     private static final String TAG = "AndroidOperator";
@@ -707,5 +712,43 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void removeListeners(Integer count) {
         // Required for RN built-in Event Emitter
+    }
+
+    // -------------------------------------------------------------
+    // Active System Notifications
+    // -------------------------------------------------------------
+
+    @ReactMethod
+    public void isNotificationListenerEnabled(Promise promise) {
+        try {
+            Set<String> packageNames = NotificationManagerCompat.getEnabledListenerPackages(reactContext);
+            boolean isEnabled = packageNames.contains(reactContext.getPackageName());
+            promise.resolve(isEnabled);
+        } catch (Exception e) {
+            promise.reject("CHECK_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void openNotificationListenerSettings(Promise promise) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            reactContext.startActivity(intent);
+            promise.resolve("Opened notification listener settings");
+        } catch (Exception e) {
+            promise.reject("SETTINGS_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void getActiveNotifications(Promise promise) {
+        try {
+            WritableArray array = NotificationListener.getActiveNotificationsArray(reactContext.getPackageName());
+            promise.resolve(array);
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting active notifications: " + e.getMessage(), e);
+            promise.reject("NOTIF_ERROR", e.getMessage());
+        }
     }
 }
