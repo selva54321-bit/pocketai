@@ -1,24 +1,71 @@
-# Python
+# =============================================================================
+# PocketAI Backend (.gitignore)
+# =============================================================================
+
+# Python Bytecode & Cache
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
 
-# Virtual environments
+# Distribution / Packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
 .venv/
 venv/
 ENV/
+env/
 
-# Test and coverage artifacts
+# Testing & Coverage
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
+coverage.xml
+nosetests.xml
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
 
-# Local environment variables
+# Needle 3 / Cactus Compute Engine Models & Weights Cache
+*.cact
+needle*.cact
+*.pt
+*.bin
+*.onnx
+
+# Environment & Secrets
 .env
 .env.*
+.env.local
 !.env.example
 
-# Editor and OS files
+# Logs
+*.log
+uvicorn.log
+
+# IDE & OS
 .vscode/
 .idea/
+*.swp
+*.swo
 .DS_Store
+Thumbs.db
