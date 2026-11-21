@@ -48,6 +48,22 @@ export class PocketAIClient {
     };
   }
 
+  async prioritizeNotifications(notifications: NotificationPayload[]): Promise<any[]> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/v1/notifications/prioritize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifications })
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn('Backend prioritize request failed:', e);
+    }
+    return [];
+  }
+
   connectWebSocket(onMessage: (data: any) => void, onError?: (err: any) => void) {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
