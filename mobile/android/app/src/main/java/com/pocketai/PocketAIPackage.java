@@ -8,6 +8,7 @@ import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.uimanager.ViewManager;
 import com.pocketai.modules.AndroidOperatorModule;
 import com.pocketai.modules.SpeechRecognitionModule;
+import com.pocketai.modules.TextToSpeechModule;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -20,6 +21,7 @@ public class PocketAIPackage implements ReactPackage {
         List<NativeModule> modules = new ArrayList<>();
         modules.add(new AndroidOperatorModule(reactContext));
         modules.add(new SpeechRecognitionModule(reactContext));
+        modules.add(new TextToSpeechModule(reactContext));
         return modules;
     }
 
