@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:sessionService="com.pocketai.services.PocketAIVoiceInteractionSessionService"
+    android:recognitionService="com.pocketai.services.PocketAIRecognitionService"
+    android:settingsActivity="com.pocketai.MainActivity"
     android:supportsAssist="true"
     android:supportsLocalInteraction="true" />
