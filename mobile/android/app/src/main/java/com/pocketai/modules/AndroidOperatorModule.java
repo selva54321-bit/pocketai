@@ -34,7 +34,11 @@ import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 import com.pocketai.services.NotificationListener;
+import com.pocketai.services.PocketAIAccessibilityService;
 import com.pocketai.services.WakeWordService;
+
+import android.content.IntentFilter;
+import android.os.BatteryManager;
 
 import java.util.Set;
 
@@ -235,6 +239,7 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
             waIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 
             if (waIntent.resolveActivity(reactContext.getPackageManager()) != null) {
+                PocketAIAccessibilityService.shouldAutoSendWhatsApp = true;
                 reactContext.startActivity(waIntent);
                 promise.resolve("Opened WhatsApp for " + recipient + (cleanPhone.isEmpty() ? "" : " (" + cleanPhone + ")"));
             } else {
@@ -777,6 +782,156 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
         } catch (Exception e) {
             Log.e(TAG, "Error getting active notifications: " + e.getMessage(), e);
             promise.reject("NOTIF_ERROR", e.getMessage());
+        }
+    }
+
+    // -------------------------------------------------------------
+    // Hardware Queries & Device Controls
+    // -------------------------------------------------------------
+
+    @ReactMethod
+    public void getBatteryStatus(Promise promise) {
+        try {
+            IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+            Intent batteryStatus = reactContext.registerReceiver(null, ifilter);
+            if (batteryStatus != null) {
+                int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+                int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+                int status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+                int plugged = batteryStatus.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1);
+                boolean isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                                     status == BatteryManager.BATTERY_STATUS_FULL;
+                int batteryPct = (int) ((level / (float) scale) * 100);
+
+                WritableMap map = Arguments.createMap();
+                map.putInt("percentage", batteryPct);
+                map.putBoolean("isCharging", isCharging);
+                map.putString("status", isCharging ? "Charging" : "Discharging");
+                map.putString("summary", "Battery is at " + batteryPct + "%" + (isCharging ? " and charging" : ""));
+                promise.resolve(map);
+                return;
+            }
+            promise.reject("BATTERY_ERROR", "Could not get battery status");
+        } catch (Exception e) {
+            promise.reject("BATTERY_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void setRingerMode(String mode, Promise promise) {
+        try {
+            AudioManager audio = (AudioManager) reactContext.getSystemService(Context.AUDIO_SERVICE);
+            if (audio == null) {
+                promise.reject("AUDIO_ERROR", "AudioManager not found");
+                return;
+            }
+            String target = mode != null ? mode.toLowerCase().trim() : "normal";
+            if (target.contains("silent") || target.contains("mute")) {
+                audio.setRingerMode(AudioManager.RINGER_MODE_SILENT);
+                promise.resolve("Phone set to Silent mode");
+            } else if (target.contains("vibrate")) {
+                audio.setRingerMode(AudioManager.RINGER_MODE_VIBRATE);
+                promise.resolve("Phone set to Vibrate mode");
+            } else {
+                audio.setRingerMode(AudioManager.RINGER_MODE_NORMAL);
+                promise.resolve("Phone sound turned on (Normal mode)");
+            }
+        } catch (Exception e) {
+            promise.reject("RINGER_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void openCamera(String mode, Promise promise) {
+        try {
+            Intent cameraIntent = new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
+            boolean isSelfie = mode != null && (mode.contains("front") || mode.contains("selfie"));
+            if (isSelfie) {
+                cameraIntent.putExtra("android.intent.extras.CAMERA_FACING", 1);
+                cameraIntent.putExtra("android.intent.extra.USE_FRONT_CAMERA", true);
+            }
+            cameraIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            reactContext.startActivity(cameraIntent);
+            promise.resolve(isSelfie ? "Opened front selfie camera" : "Opened camera");
+        } catch (Exception e) {
+            promise.reject("CAMERA_ERROR", e.getMessage());
+        }
+    }
+
+    // -------------------------------------------------------------
+    // Accessibility Global Actions
+    // -------------------------------------------------------------
+
+    @ReactMethod
+    public void isAccessibilityServiceEnabled(Promise promise) {
+        promise.resolve(PocketAIAccessibilityService.isServiceRunning());
+    }
+
+    @ReactMethod
+    public void openAccessibilitySettings(Promise promise) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            reactContext.startActivity(intent);
+            promise.resolve("Opened accessibility settings");
+        } catch (Exception e) {
+            promise.reject("SETTINGS_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void takeScreenshot(Promise promise) {
+        if (!PocketAIAccessibilityService.isServiceRunning()) {
+            promise.reject("ACCESSIBILITY_DISABLED", "PocketAI Accessibility Service is required to take screenshots. Please enable it in Settings.");
+            return;
+        }
+        boolean ok = PocketAIAccessibilityService.instance.takeScreenshot();
+        if (ok) {
+            promise.resolve("Screenshot captured");
+        } else {
+            promise.reject("SCREENSHOT_FAILED", "Failed to capture screenshot");
+        }
+    }
+
+    @ReactMethod
+    public void lockScreen(Promise promise) {
+        if (!PocketAIAccessibilityService.isServiceRunning()) {
+            promise.reject("ACCESSIBILITY_DISABLED", "PocketAI Accessibility Service is required to lock the screen. Please enable it in Settings.");
+            return;
+        }
+        boolean ok = PocketAIAccessibilityService.instance.lockScreen();
+        if (ok) {
+            promise.resolve("Screen locked");
+        } else {
+            promise.reject("LOCK_FAILED", "Failed to lock screen");
+        }
+    }
+
+    @ReactMethod
+    public void openNotificationPanel(Promise promise) {
+        if (!PocketAIAccessibilityService.isServiceRunning()) {
+            promise.reject("ACCESSIBILITY_DISABLED", "PocketAI Accessibility Service is required. Please enable it in Settings.");
+            return;
+        }
+        boolean ok = PocketAIAccessibilityService.instance.openNotifications();
+        if (ok) {
+            promise.resolve("Opened notification panel");
+        } else {
+            promise.reject("PANEL_FAILED", "Failed to open notification panel");
+        }
+    }
+
+    @ReactMethod
+    public void openQuickSettingsPanel(Promise promise) {
+        if (!PocketAIAccessibilityService.isServiceRunning()) {
+            promise.reject("ACCESSIBILITY_DISABLED", "PocketAI Accessibility Service is required. Please enable it in Settings.");
+            return;
+        }
+        boolean ok = PocketAIAccessibilityService.instance.openQuickSettings();
+        if (ok) {
+            promise.resolve("Opened Quick Settings panel");
+        } else {
+            promise.reject("PANEL_FAILED", "Failed to open Quick Settings panel");
         }
     }
 }
