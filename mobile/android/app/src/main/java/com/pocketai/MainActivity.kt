@@ -1,6 +1,7 @@
 package com.pocketai
 
 import android.content.Intent
+import android.os.Bundle
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
@@ -14,13 +15,29 @@ class MainActivity : ReactActivity() {
   override fun createReactActivityDelegate(): ReactActivityDelegate =
       DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
 
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    handleAssistantIntent(intent)
+  }
+
   override fun onNewIntent(intent: Intent?) {
     super.onNewIntent(intent)
     setIntent(intent)
-    val wakeWordTriggered = intent?.getBooleanExtra("wake_word_triggered", false) ?: false
-    val commandText = intent?.getStringExtra("command_text") ?: ""
-    if (wakeWordTriggered || commandText.isNotEmpty()) {
-      AndroidOperatorModule.emitWakeWordEvent(wakeWordTriggered, commandText)
+    handleAssistantIntent(intent)
+  }
+
+  private fun handleAssistantIntent(intent: Intent?) {
+    if (intent == null) return
+
+    val isAssistAction = Intent.ACTION_ASSIST == intent.action || 
+                         Intent.ACTION_VOICE_COMMAND == intent.action
+    val isAssistExtra = intent.getBooleanExtra("assistant_triggered", false) ||
+                        intent.getBooleanExtra("auto_mic", false)
+    val wakeWordTriggered = intent.getBooleanExtra("wake_word_triggered", false)
+    val commandText = intent.getStringExtra("command_text") ?: ""
+
+    if (isAssistAction || isAssistExtra || wakeWordTriggered || commandText.isNotEmpty()) {
+      AndroidOperatorModule.emitWakeWordEvent(true, commandText)
     }
   }
 }
