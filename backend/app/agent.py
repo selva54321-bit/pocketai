@@ -33,6 +33,16 @@ from app.tools.notification_tools import (
     classify_security_alert,
     check_notifications,
 )
+from app.tools.device_tools import (
+    get_battery_status,
+    set_ringer_mode,
+    open_camera,
+    take_screenshot,
+    lock_screen,
+    open_notification_panel,
+    open_quick_settings,
+)
+from app.tools.routine_tools import execute_routine
 
 logger = logging.getLogger("pocketai.agent")
 
@@ -70,6 +80,14 @@ class PocketAIAgent:
             take_note,
             copy_to_clipboard,
             open_timetable,
+            get_battery_status,
+            set_ringer_mode,
+            open_camera,
+            take_screenshot,
+            lock_screen,
+            open_notification_panel,
+            open_quick_settings,
+            execute_routine,
         ]
         self.notification_tools = [
             extract_transaction,
