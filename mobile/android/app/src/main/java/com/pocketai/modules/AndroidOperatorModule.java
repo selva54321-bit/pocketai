@@ -668,14 +668,42 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
+    public void openDefaultAssistantSettings(Promise promise) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            reactContext.startActivity(intent);
+            promise.resolve("Opened assistant settings");
+        } catch (Exception e) {
+            try {
+                Intent fallback = new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS);
+                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                reactContext.startActivity(fallback);
+                promise.resolve("Opened default apps settings");
+            } catch (Exception ex) {
+                Log.e(TAG, "Failed to open assistant settings: " + ex.getMessage());
+                promise.reject("SETTINGS_ERROR", ex.getMessage());
+            }
+        }
+    }
+
+    @ReactMethod
     public void getInitialWakeWordCommand(Promise promise) {
         try {
             if (getCurrentActivity() != null && getCurrentActivity().getIntent() != null) {
                 Intent intent = getCurrentActivity().getIntent();
-                boolean triggered = intent.getBooleanExtra("wake_word_triggered", false);
+                boolean isAssistAction = Intent.ACTION_ASSIST.equals(intent.getAction()) || 
+                                         Intent.ACTION_VOICE_COMMAND.equals(intent.getAction());
+                boolean isAssistExtra = intent.getBooleanExtra("assistant_triggered", false) ||
+                                        intent.getBooleanExtra("auto_mic", false);
+                boolean wakeTriggered = intent.getBooleanExtra("wake_word_triggered", false);
+                boolean triggered = isAssistAction || isAssistExtra || wakeTriggered;
+
                 String commandText = intent.getStringExtra("command_text");
                 // Clear extras so they only get consumed once
                 intent.removeExtra("wake_word_triggered");
+                intent.removeExtra("assistant_triggered");
+                intent.removeExtra("auto_mic");
                 intent.removeExtra("command_text");
 
                 WritableMap map = Arguments.createMap();
