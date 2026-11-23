@@ -117,5 +117,36 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
+        <!-- PocketAI Digital Assistant Service (Bixby / Google Assistant Replacement) -->
+        <service
+            android:name=".services.PocketAIVoiceInteractionService"
+            android:label="PocketAI Assistant"
+            android:permission="android.permission.BIND_VOICE_INTERACTION"
+            android:exported="true">
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/voice_interaction_service" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".services.PocketAIVoiceInteractionSessionService"
+            android:permission="android.permission.BIND_VOICE_INTERACTION"
+            android:exported="true" />
+
+        <!-- Quick Settings Tile for One-Tap Voice Assistant from Notification Drawer -->
+        <service
+            android:name=".services.PocketAITileService"
+            android:icon="@mipmap/ic_launcher"
+            android:label="PocketAI"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
     </application>
 </manifest>
