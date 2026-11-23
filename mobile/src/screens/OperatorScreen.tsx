@@ -68,6 +68,7 @@ export const OperatorScreen: React.FC = () => {
   const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
   const [latestResponse, setLatestResponse] = useState<AgentResponse | null>(null);
   const [executionMessage, setExecutionMessage] = useState<string>('');
+  const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const autoMicRef = useRef(autoMicEnabled);
@@ -149,9 +150,32 @@ export const OperatorScreen: React.FC = () => {
     }
   };
 
+  const checkConnection = async () => {
+    const isOk = await apiClient.checkHealth();
+    setBackendConnected(isOk);
+    return isOk;
+  };
+
+  const handleBadgePress = async () => {
+    const ok = await checkConnection();
+    if (ok) {
+      Alert.alert('Needle 3 Engine', 'Connected successfully to backend on port 8000.');
+    } else {
+      Alert.alert(
+        'Backend Offline',
+        'Cannot connect to Needle 3 Edge backend (port 8000).\n\nPlease verify:\n1. USB cable is plugged in\n2. Run: adb reverse tcp:8000 tcp:8000\n3. Backend server is running: python run.py',
+        [
+          { text: 'Retry', onPress: checkConnection },
+          { text: 'OK', style: 'cancel' },
+        ]
+      );
+    }
+  };
+
   useEffect(() => {
     // 1. Initial Launch: Verify runtime permissions, arm assistant/wake-word, and trigger auto-listen
     const initApp = async () => {
+      checkConnection();
       if (Platform.OS === 'android') {
         try {
           const hasRecordAudio = await PermissionsAndroid.check(
@@ -220,7 +244,8 @@ export const OperatorScreen: React.FC = () => {
         (previousState === 'background' || previousState === 'inactive') &&
         nextAppState === 'active'
       ) {
-        // App is now foreground: pause background wake word listener so foreground operator can listen
+        // App is now foreground: re-check edge engine connection & pause background listener
+        checkConnection();
         AndroidNative.wakeWord.setForegroundState(true).catch(() => {});
         if (autoMicRef.current) {
           setTimeout(() => {
@@ -358,10 +383,31 @@ export const OperatorScreen: React.FC = () => {
               </Text>
             </TouchableOpacity>
 
-            <View style={styles.onlineBadge}>
-              <View style={styles.onlineDot} />
-              <Text style={styles.onlineText}>Needle 3</Text>
-            </View>
+            <TouchableOpacity
+              style={[
+                styles.onlineBadge,
+                backendConnected === false && styles.offlineBadge,
+                backendConnected === null && styles.pendingBadge,
+              ]}
+              onPress={handleBadgePress}
+            >
+              <View
+                style={[
+                  styles.onlineDot,
+                  backendConnected === false && styles.offlineDot,
+                  backendConnected === null && styles.pendingDot,
+                ]}
+              />
+              <Text
+                style={[
+                  styles.onlineText,
+                  backendConnected === false && styles.offlineText,
+                  backendConnected === null && styles.pendingText,
+                ]}
+              >
+                {backendConnected === false ? 'Offline' : backendConnected ? 'Needle 3' : 'Checking...'}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
         <Text style={styles.subtitle}>On-Device Personal Phone Automation Engine</Text>
@@ -571,6 +617,18 @@ const styles = StyleSheet.create({
   },
   onlineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#3fb950', marginRight: 4 },
   onlineText: { color: '#3fb950', fontSize: 11, fontWeight: '600' },
+  offlineBadge: {
+    backgroundColor: '#da363322',
+    borderColor: '#da3633',
+  },
+  offlineDot: { backgroundColor: '#f85149' },
+  offlineText: { color: '#f85149' },
+  pendingBadge: {
+    backgroundColor: '#d2992222',
+    borderColor: '#d29922',
+  },
+  pendingDot: { backgroundColor: '#d29922' },
+  pendingText: { color: '#d29922' },
   subtitle: { fontSize: 12, color: '#8b949e', marginTop: 4 },
 
   // Live Listening Banner
