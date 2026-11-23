@@ -1,7 +1,7 @@
 import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
 import { prioritizeNotifications } from '../utils/notificationScorer';
 
-const { AndroidOperator, SpeechRecognition } = NativeModules;
+const { AndroidOperator, SpeechRecognition, TextToSpeech } = NativeModules;
 const speechEmitter = SpeechRecognition ? new NativeEventEmitter(SpeechRecognition) : null;
 const operatorEmitter = AndroidOperator ? new NativeEventEmitter(AndroidOperator) : null;
 
@@ -114,6 +114,51 @@ export const AndroidNative = {
     return await AndroidOperator.openDefaultAssistantSettings();
   },
 
+  async getBatteryStatus(): Promise<{ percentage: number; isCharging: boolean; status: string; summary: string }> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.getBatteryStatus();
+  },
+
+  async setRingerMode(mode: string): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.setRingerMode(mode);
+  },
+
+  async openCamera(mode: string = 'rear'): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.openCamera(mode);
+  },
+
+  async isAccessibilityServiceEnabled(): Promise<boolean> {
+    if (!this.isAvailable) return false;
+    return await AndroidOperator.isAccessibilityServiceEnabled();
+  },
+
+  async openAccessibilitySettings(): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.openAccessibilitySettings();
+  },
+
+  async takeScreenshot(): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.takeScreenshot();
+  },
+
+  async lockScreen(): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.lockScreen();
+  },
+
+  async openNotificationPanel(): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.openNotificationPanel();
+  },
+
+  async openQuickSettingsPanel(): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.openQuickSettingsPanel();
+  },
+
   // Central dispatch for resolved Needle 3 tool actions
   async executeResolvedAction(action: Record<string, any>): Promise<string> {
     const rawAction = action.android_action || action.action || action.name || '';
@@ -173,6 +218,41 @@ export const AndroidNative = {
           .join('; ');
         return `Found ${important.length} important notifications (${topSummary}). Opened Notifications.`;
       }
+      case 'GET_BATTERY_STATUS': {
+        const bat = await this.getBatteryStatus();
+        return bat.summary;
+      }
+      case 'SET_RINGER_MODE':
+        return await this.setRingerMode(action.mode || 'normal');
+      case 'OPEN_CAMERA':
+        return await this.openCamera(action.mode || 'rear');
+      case 'TAKE_SCREENSHOT':
+        return await this.takeScreenshot();
+      case 'LOCK_SCREEN':
+        return await this.lockScreen();
+      case 'OPEN_NOTIFICATION_PANEL':
+        return await this.openNotificationPanel();
+      case 'OPEN_QUICK_SETTINGS':
+        return await this.openQuickSettingsPanel();
+      case 'EXECUTE_ROUTINE': {
+        const routine = String(action.routine || '').toLowerCase();
+        if (routine.includes('morning')) {
+          await this.setDoNotDisturb(false);
+          const bat = await this.getBatteryStatus();
+          return `Good morning! Do Not Disturb turned off. ${bat.summary}.`;
+        } else if (routine.includes('night') || routine.includes('bedtime')) {
+          await this.setDoNotDisturb(true);
+          await this.setBrightness(0);
+          await this.setAlarm(7, 0, 'Morning Alarm', true);
+          return 'Good night! Enabled Do Not Disturb, dimmed brightness, and set alarm for 7:00 AM.';
+        } else if (routine.includes('focus')) {
+          await this.setDoNotDisturb(true);
+          await this.setRingerMode('vibrate');
+          await this.startTimer(45 * 60, 'Focus Session', true);
+          return 'Focus mode active! Enabled Do Not Disturb, set phone to vibrate, and started 45-minute timer.';
+        }
+        return `Executed routine: ${action.routine}`;
+      }
       case 'NAVIGATE_SCREEN': {
         const screen = String(action.screen || '').toLowerCase();
         if (screen === 'notifications' || screen === 'notification') {
@@ -222,6 +302,26 @@ export const AndroidNative = {
         callback(e.message);
       });
       return () => sub.remove();
+    }
+  },
+
+  // Text-to-Speech (TTS) voice feedback
+  tts: {
+    async speak(text: string): Promise<boolean> {
+      if (!TextToSpeech) return false;
+      try {
+        return await TextToSpeech.speak(text);
+      } catch {
+        return false;
+      }
+    },
+    async stop(): Promise<boolean> {
+      if (!TextToSpeech) return false;
+      return await TextToSpeech.stop();
+    },
+    async isSpeaking(): Promise<boolean> {
+      if (!TextToSpeech) return false;
+      return await TextToSpeech.isSpeaking();
     }
   },
 
