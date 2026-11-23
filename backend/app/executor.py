@@ -221,6 +221,60 @@ class ActionExecutor:
                 "screen": "Notifications"
             }
 
+        # 21. Battery Status
+        elif call_name in ("get_battery_status", "battery_status", "check_battery"):
+            return {
+                "android_action": "GET_BATTERY_STATUS"
+            }
+
+        # 22. Ringer Sound Mode
+        elif call_name in ("set_ringer_mode", "set_sound_mode"):
+            mode = str(clean_args.get("mode", "normal")).lower()
+            return {
+                "android_action": "SET_RINGER_MODE",
+                "mode": mode
+            }
+
+        # 23. Camera & Selfie
+        elif call_name in ("open_camera", "take_photo", "take_selfie"):
+            mode = str(clean_args.get("mode", "rear")).lower()
+            return {
+                "android_action": "OPEN_CAMERA",
+                "mode": mode
+            }
+
+        # 24. Take Screenshot
+        elif call_name in ("take_screenshot", "capture_screen"):
+            return {
+                "android_action": "TAKE_SCREENSHOT"
+            }
+
+        # 25. Lock Screen
+        elif call_name in ("lock_screen", "turn_off_screen"):
+            return {
+                "android_action": "LOCK_SCREEN"
+            }
+
+        # 26. Notification Panel
+        elif call_name == "open_notification_panel":
+            return {
+                "android_action": "OPEN_NOTIFICATION_PANEL"
+            }
+
+        # 27. Quick Settings Panel
+        elif call_name == "open_quick_settings":
+            return {
+                "android_action": "OPEN_QUICK_SETTINGS"
+            }
+
+        # 28. Smart Routines & Macros
+        elif call_name in ("execute_routine", "run_routine"):
+            routine = str(clean_args.get("routine_name") or clean_args.get("routine", "good_morning")).lower()
+            return {
+                "android_action": "EXECUTE_ROUTINE",
+                "routine": routine
+            }
+
         return {
             "android_action": "UNKNOWN",
             "call_name": call_name,
