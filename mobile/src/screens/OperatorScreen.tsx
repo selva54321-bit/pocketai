@@ -25,6 +25,27 @@ interface ActionCategory {
 
 const ACTION_CATEGORIES: ActionCategory[] = [
   {
+    category: '⚡ Complete Mobile Automation',
+    items: [
+      'What is my battery level?',
+      'Mute my phone.',
+      'Set phone to vibrate.',
+      'Take a selfie.',
+      'Take a screenshot.',
+      'Lock my phone.',
+      'Pull down notifications.',
+      'Open quick settings.',
+    ],
+  },
+  {
+    category: '🌅 Routines & Focus Macros',
+    items: [
+      'Good morning.',
+      'Good night.',
+      'Start focus mode.',
+    ],
+  },
+  {
     category: '📱 Hardware & Voice Trigger',
     items: [
       'Say "Hey Jackie" from home screen.',
@@ -69,6 +90,8 @@ export const OperatorScreen: React.FC = () => {
   const [latestResponse, setLatestResponse] = useState<AgentResponse | null>(null);
   const [executionMessage, setExecutionMessage] = useState<string>('');
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [accessibilityEnabled, setAccessibilityEnabled] = useState(false);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const autoMicRef = useRef(autoMicEnabled);
@@ -156,6 +179,16 @@ export const OperatorScreen: React.FC = () => {
     return isOk;
   };
 
+  const checkAccessibility = async () => {
+    try {
+      const enabled = await AndroidNative.isAccessibilityServiceEnabled();
+      setAccessibilityEnabled(enabled);
+      return enabled;
+    } catch {
+      return false;
+    }
+  };
+
   const handleBadgePress = async () => {
     const ok = await checkConnection();
     if (ok) {
@@ -176,6 +209,7 @@ export const OperatorScreen: React.FC = () => {
     // 1. Initial Launch: Verify runtime permissions, arm assistant/wake-word, and trigger auto-listen
     const initApp = async () => {
       checkConnection();
+      checkAccessibility();
       if (Platform.OS === 'android') {
         try {
           const hasRecordAudio = await PermissionsAndroid.check(
@@ -246,6 +280,7 @@ export const OperatorScreen: React.FC = () => {
       ) {
         // App is now foreground: re-check edge engine connection & pause background listener
         checkConnection();
+        checkAccessibility();
         AndroidNative.wakeWord.setForegroundState(true).catch(() => {});
         if (autoMicRef.current) {
           setTimeout(() => {
@@ -334,15 +369,28 @@ export const OperatorScreen: React.FC = () => {
   const executeCall = async (call: FunctionCall) => {
     try {
       const resolved = call.arguments._resolved_android;
+      let msg = '';
       if (resolved) {
-        const msg = await AndroidNative.executeResolvedAction(resolved);
+        msg = await AndroidNative.executeResolvedAction(resolved);
         setExecutionMessage(`✓ ${msg}`);
       } else {
-        setExecutionMessage(`Action '${call.name}' triggered.`);
+        msg = `Action '${call.name}' triggered.`;
+        setExecutionMessage(msg);
+      }
+
+      if (ttsEnabled && msg) {
+        const spoken = msg.replace(/^[✓✗⚙️⚡🔊🔇🦾]\s*/, '').trim();
+        AndroidNative.tts.speak(spoken).catch((e) => {
+          console.warn('[PocketAI] TTS feedback warning:', e);
+        });
       }
     } catch (e: any) {
-      setExecutionMessage(`✗ Execution failed: ${e.message}`);
-      Alert.alert('Action Error', e.message || 'Failed to execute action on device.');
+      const errMsg = e.message || 'Execution failed';
+      setExecutionMessage(`✗ Execution failed: ${errMsg}`);
+      if (ttsEnabled) {
+        AndroidNative.tts.speak(`Action failed: ${errMsg}`).catch(() => {});
+      }
+      Alert.alert('Action Error', errMsg);
     }
   };
 
@@ -380,6 +428,16 @@ export const OperatorScreen: React.FC = () => {
             >
               <Text style={styles.autoMicText}>
                 {autoMicEnabled ? '🎙️ Mic: ON' : '🔇 Mic: OFF'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Jackie Voice TTS Feedback Toggle */}
+            <TouchableOpacity
+              style={[styles.autoMicBadge, ttsEnabled ? styles.autoMicOn : styles.autoMicOff]}
+              onPress={() => setTtsEnabled((prev) => !prev)}
+            >
+              <Text style={styles.autoMicText}>
+                {ttsEnabled ? '🔊 Voice: ON' : '🔇 Voice: OFF'}
               </Text>
             </TouchableOpacity>
 
@@ -430,6 +488,29 @@ export const OperatorScreen: React.FC = () => {
       )}
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+        {/* Hands-Free Accessibility Service Banner */}
+        {!accessibilityEnabled && (
+          <View style={styles.accessibilityBanner}>
+            <View style={styles.assistantBannerHeader}>
+              <View style={[styles.assistantIconCircle, { backgroundColor: '#d2992226' }]}>
+                <Text style={styles.assistantBannerIcon}>🦾</Text>
+              </View>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.assistantBannerTitle}>Hands-Free UI Automation</Text>
+                <Text style={styles.assistantBannerSubtitle}>
+                  Enable PocketAI Accessibility to auto-send WhatsApp chats, take screenshots, lock phone & pull notification shades hands-free.
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.accessibilitySettingsButton}
+              onPress={() => AndroidNative.openAccessibilitySettings()}
+            >
+              <Text style={styles.assistantSettingsButtonText}>⚙️ Enable Accessibility Service</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Samsung Bixby Mode / Digital Assistant Banner */}
         <View style={styles.assistantBanner}>
           <View style={styles.assistantBannerHeader}>
@@ -661,6 +742,22 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   stopButtonText: { color: '#f0f6fc', fontSize: 12, fontWeight: '600' },
+
+  // Accessibility Banner
+  accessibilityBanner: {
+    backgroundColor: '#161b22',
+    borderWidth: 1,
+    borderColor: '#d2992266',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  accessibilitySettingsButton: {
+    backgroundColor: '#d29922',
+    borderRadius: 8,
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
 
   // Assistant Banner
   assistantBanner: {
