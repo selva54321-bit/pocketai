@@ -109,6 +109,11 @@ export const AndroidNative = {
     return await AndroidOperator.openBatterySaverSettings();
   },
 
+  async openDefaultAssistantSettings(): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.openDefaultAssistantSettings();
+  },
+
   // Central dispatch for resolved Needle 3 tool actions
   async executeResolvedAction(action: Record<string, any>): Promise<string> {
     const rawAction = action.android_action || action.action || action.name || '';
