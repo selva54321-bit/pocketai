@@ -136,6 +136,17 @@
             android:permission="android.permission.BIND_VOICE_INTERACTION"
             android:exported="true" />
 
+        <service
+            android:name=".services.PocketAIRecognitionService"
+            android:label="PocketAI Recognition Service"
+            android:permission="android.permission.BIND_RECOGNITION_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+
         <!-- Quick Settings Tile for One-Tap Voice Assistant from Notification Drawer -->
         <service
             android:name=".services.PocketAITileService"
