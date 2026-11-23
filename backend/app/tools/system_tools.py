@@ -127,7 +127,8 @@ def set_alarm(hour: int, minute: int, am_pm: Optional[Literal["am", "pm"]] = Non
 # -------------------------------------------------------------
 
 @cactus.tool(triggers=[
-    r"\b(call|dial|phone)\b",
+    r"\b(call|dial)\b",
+    r"\bphone\s+[a-zA-Z]+",
     r"\bmake a (call|phone call)\b"
 ])
 def make_phone_call(contact_or_number: str):
@@ -190,7 +191,7 @@ def navigate_to(destination: str):
 @cactus.tool(triggers=[
     r"\b(google|search the web|search web|search for)\b",
     r"\bwho (is|was)\b",
-    r"\bwhat (is|are)\b"
+    r"\bsearch\b"
 ])
 def search_web(query: str):
     """Search Google or the web for general queries, information, or websites."""
