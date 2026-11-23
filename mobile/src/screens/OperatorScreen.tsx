@@ -65,7 +65,7 @@ export const OperatorScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [autoMicEnabled, setAutoMicEnabled] = useState(true);
-  const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
   const [latestResponse, setLatestResponse] = useState<AgentResponse | null>(null);
   const [executionMessage, setExecutionMessage] = useState<string>('');
 
@@ -129,6 +129,10 @@ export const OperatorScreen: React.FC = () => {
     try {
       if (nextState) {
         await AndroidNative.wakeWord.start();
+        Alert.alert(
+          'Hands-Free Voice Trigger Enabled',
+          'Jackie will listen for "Hey Jackie" while the screen is ON. When the screen turns OFF, the microphone is automatically shut down to eliminate battery drain and privacy indicators.'
+        );
       } else {
         await AndroidNative.wakeWord.stop();
       }
@@ -137,8 +141,16 @@ export const OperatorScreen: React.FC = () => {
     }
   };
 
+  const handleOpenAssistantSettings = async () => {
+    try {
+      await AndroidNative.openDefaultAssistantSettings();
+    } catch (err: any) {
+      Alert.alert('Settings Error', err.message || 'Failed to open assistant settings.');
+    }
+  };
+
   useEffect(() => {
-    // 1. Initial Launch: Verify runtime permissions, arm wake-word service, and trigger auto-listen
+    // 1. Initial Launch: Verify runtime permissions, arm assistant/wake-word, and trigger auto-listen
     const initApp = async () => {
       if (Platform.OS === 'android') {
         try {
@@ -155,22 +167,29 @@ export const OperatorScreen: React.FC = () => {
             ]);
           }
 
-          // Start the WakeWordService for 'Hey Jackie' in background
+          // If wakeWord is enabled (Screen-On mode), start it; otherwise ensure it's stopped
           if (wakeWordRef.current) {
             AndroidNative.wakeWord.start().catch((e) => {
               console.warn('[PocketAI] WakeWordService start warning:', e);
             });
-            // Mark app currently in foreground so background recognizer doesn't collide
             AndroidNative.wakeWord.setForegroundState(true).catch(() => {});
+          } else {
+            AndroidNative.wakeWord.stop().catch(() => {});
           }
 
-          // Check if app was opened via wake word ("Hey Jackie <command>")
+          // Check if app was opened via wake word or system Assistant gesture ("Hold Home / Side Key")
           const initialWake = await AndroidNative.wakeWord.getInitialCommand();
           if (initialWake.wakeWordTriggered) {
-            console.log('[PocketAI] Launched via wake word intent:', initialWake);
+            console.log('[PocketAI] Launched via wake word / Assistant intent:', initialWake);
             coldBootDoneRef.current = true;
             if (initialWake.commandText && initialWake.commandText.trim()) {
               handleSendCommand(initialWake.commandText.trim());
+              return;
+            } else {
+              // Triggered by Assistant / Side Key without pre-speech: start mic immediately!
+              setTimeout(() => {
+                startMicSession();
+              }, 300);
               return;
             }
           }
@@ -214,9 +233,12 @@ export const OperatorScreen: React.FC = () => {
         AndroidNative.speech.stop().catch(() => {});
         setIsListening(false);
         isListeningRef.current = false;
-        // Resume background 'Hey Jackie' detection!
+        // Resume background 'Hey Jackie' detection (Screen-On only) if enabled
         if (wakeWordRef.current) {
           AndroidNative.wakeWord.setForegroundState(false).catch(() => {});
+        } else {
+          // Zero background mic: ensure service is stopped
+          AndroidNative.wakeWord.stop().catch(() => {});
         }
       }
       previousState = nextAppState;
@@ -322,7 +344,7 @@ export const OperatorScreen: React.FC = () => {
               onPress={toggleWakeWord}
             >
               <Text style={[styles.autoMicText, wakeWordEnabled && styles.wakeWordText]}>
-                {wakeWordEnabled ? "⚡ 'Hey Jackie': ON" : "🔇 'Hey Jackie': OFF"}
+                {wakeWordEnabled ? '⚡ Hands-Free: ON' : '🔇 Hands-Free: OFF'}
               </Text>
             </TouchableOpacity>
 
@@ -362,6 +384,27 @@ export const OperatorScreen: React.FC = () => {
       )}
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+        {/* Samsung Bixby Mode / Digital Assistant Banner */}
+        <View style={styles.assistantBanner}>
+          <View style={styles.assistantBannerHeader}>
+            <View style={styles.assistantIconCircle}>
+              <Text style={styles.assistantBannerIcon}>⚡</Text>
+            </View>
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={styles.assistantBannerTitle}>Bixby-Style Phone Assistant</Text>
+              <Text style={styles.assistantBannerSubtitle}>
+                Zero background mic & 0% battery drain. Press Side Button or long-press Home to talk.
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.assistantSettingsButton}
+            onPress={handleOpenAssistantSettings}
+          >
+            <Text style={styles.assistantSettingsButtonText}>⚙️ Set as Phone Assistant</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Result & Telemetry Card */}
         {latestResponse && (
           <View style={styles.responseCard}>
@@ -560,6 +603,54 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   stopButtonText: { color: '#f0f6fc', fontSize: 12, fontWeight: '600' },
+
+  // Assistant Banner
+  assistantBanner: {
+    backgroundColor: '#161b22',
+    borderWidth: 1,
+    borderColor: '#30363d',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  assistantBannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  assistantIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#388bfd26',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  assistantBannerIcon: {
+    fontSize: 18,
+  },
+  assistantBannerTitle: {
+    color: '#f0f6fc',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  assistantBannerSubtitle: {
+    color: '#8b949e',
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  assistantSettingsButton: {
+    backgroundColor: '#238636',
+    borderRadius: 8,
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  assistantSettingsButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
 
   content: { flex: 1 },
   contentContainer: { padding: 16 },
