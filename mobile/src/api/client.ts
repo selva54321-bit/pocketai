@@ -16,18 +16,46 @@ export class PocketAIClient {
     this.disconnectWebSocket();
   }
 
-  async sendQuery(query: string): Promise<AgentResponse> {
-    const res = await fetch(`${this.baseUrl}/api/v1/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query })
-    });
-
-    if (!res.ok) {
-      throw new Error(`Edge Agent Error: ${res.status} ${res.statusText}`);
+  async checkHealth(): Promise<boolean> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(`${this.baseUrl}/health`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return res.ok;
+    } catch {
+      return false;
     }
+  }
 
-    return await res.json();
+  async sendQuery(query: string, retriesLeft: number = 1): Promise<AgentResponse> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/v1/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Edge Agent Error: ${res.status} ${res.statusText}`);
+      }
+
+      return await res.json();
+    } catch (err: any) {
+      if (retriesLeft > 0) {
+        // Wait 350ms and retry once in case of transient socket drop
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        return this.sendQuery(query, retriesLeft - 1);
+      }
+      if (err.message && err.message.includes('Network request failed')) {
+        throw new Error(
+          'Cannot reach Needle 3 backend (port 8000). Ensure backend is running and USB port forwarding is active (adb reverse tcp:8000 tcp:8000).'
+        );
+      }
+      throw err;
+    }
   }
 
   async analyzeNotification(notification: NotificationPayload): Promise<NotificationAnalysis> {
