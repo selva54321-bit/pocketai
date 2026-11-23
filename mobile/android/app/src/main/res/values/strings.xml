@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">PocketAI</string>
     <string name="voice_assistant_shortcut">Voice Operator</string>
+    <string name="accessibility_service_description">Enables PocketAI to automatically perform system actions (screenshots, lock screen) and click Send in messaging apps hands-free.</string>
 </resources>
