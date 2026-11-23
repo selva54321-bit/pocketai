@@ -29,12 +29,22 @@ public class PocketAIVoiceInteractionSession extends VoiceInteractionSession {
             intent.setAction(Intent.ACTION_ASSIST);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK 
                           | Intent.FLAG_ACTIVITY_SINGLE_TOP 
-                          | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                          | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             intent.putExtra("assistant_triggered", true);
             intent.putExtra("auto_mic", true);
-            getContext().startActivity(intent);
+            startAssistantActivity(intent);
         } catch (Exception e) {
-            Log.e(TAG, "Failed to launch MainActivity from assistant session: " + e.getMessage(), e);
+            Log.e(TAG, "Failed startAssistantActivity: " + e.getMessage(), e);
+            try {
+                Intent fallback = new Intent(getContext(), MainActivity.class);
+                fallback.setAction(Intent.ACTION_ASSIST);
+                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                fallback.putExtra("assistant_triggered", true);
+                fallback.putExtra("auto_mic", true);
+                getContext().startActivity(fallback);
+            } catch (Exception ex) {
+                Log.e(TAG, "Fallback startActivity failed: " + ex.getMessage(), ex);
+            }
         } finally {
             hide();
         }
