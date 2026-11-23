@@ -5,14 +5,17 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.speech.RecognitionListener;
@@ -47,6 +50,7 @@ public class WakeWordService extends Service implements RecognitionListener {
 
     public static volatile boolean isServiceRunning = false;
     public static volatile boolean isAppInForeground = false;
+    public static volatile boolean isScreenOn = true;
     public static WakeWordService instance = null;
 
     private SpeechRecognizer speechRecognizer;
@@ -54,17 +58,51 @@ public class WakeWordService extends Service implements RecognitionListener {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private boolean isListeningActive = false;
     private long lastTriggerTime = 0;
+    private int consecutiveSilenceCount = 0;
+    private boolean isReceiverRegistered = false;
 
     // Wake word variations: "Hey Jackie", "Jackie", "Hey Jacky", "Jacky", "Hi Jackie", "Ok Jackie", "Hey Jaki"
     private static final Pattern WAKE_WORD_PATTERN = Pattern.compile(
         "(?i).*?\\b(hey\\s+jackie|jackie|hey\\s+jacky|jacky|hi\\s+jackie|hi\\s+jacky|ok\\s+jackie|hey\\s+jaki|hey\\s+jaggy)\\b[,\\s]*(.*)"
     );
 
+    // Dynamic screen broadcast receiver: Disables microphone when screen is OFF
+    private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent != null ? intent.getAction() : null;
+            if (Intent.ACTION_SCREEN_OFF.equals(action)) {
+                Log.i(TAG, "Screen went OFF: Releasing microphone (zero background mic, zero green dot)");
+                isScreenOn = false;
+                mainHandler.removeCallbacksAndMessages(null);
+                cleanupRecognizer();
+            } else if (Intent.ACTION_SCREEN_ON.equals(action) || Intent.ACTION_USER_PRESENT.equals(action)) {
+                Log.i(TAG, "Screen went ON: Ready for hands-free voice command");
+                isScreenOn = true;
+                consecutiveSilenceCount = 0;
+                if (isServiceRunning && !isAppInForeground) {
+                    scheduleRestart(400);
+                }
+            }
+        }
+    };
+
     @Override
     public void onCreate() {
         super.onCreate();
         instance = this;
-        Log.i(TAG, "WakeWordService created");
+
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        isScreenOn = pm == null || pm.isInteractive();
+
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Intent.ACTION_SCREEN_ON);
+        filter.addAction(Intent.ACTION_SCREEN_OFF);
+        filter.addAction(Intent.ACTION_USER_PRESENT);
+        registerReceiver(screenReceiver, filter);
+        isReceiverRegistered = true;
+
+        Log.i(TAG, "WakeWordService created (screenOn=" + isScreenOn + ")");
     }
 
     @Override
@@ -142,8 +180,8 @@ public class WakeWordService extends Service implements RecognitionListener {
 
     private void startListeningProcess() {
         mainHandler.post(() -> {
-            if (!isServiceRunning || isAppInForeground) {
-                Log.d(TAG, "Skip startListening: running=" + isServiceRunning + ", foreground=" + isAppInForeground);
+            if (!isServiceRunning || isAppInForeground || !isScreenOn) {
+                Log.d(TAG, "Skip startListening: running=" + isServiceRunning + ", foreground=" + isAppInForeground + ", screenOn=" + isScreenOn);
                 return;
             }
 
@@ -256,6 +294,12 @@ public class WakeWordService extends Service implements RecognitionListener {
         isServiceRunning = false;
         mainHandler.removeCallbacksAndMessages(null);
         cleanupRecognizer();
+        if (isReceiverRegistered) {
+            try {
+                unregisterReceiver(screenReceiver);
+            } catch (Exception ignored) {}
+            isReceiverRegistered = false;
+        }
         stopForeground(true);
         stopSelf();
     }
@@ -270,14 +314,15 @@ public class WakeWordService extends Service implements RecognitionListener {
             for (String text : matches) {
                 if (text != null && WAKE_WORD_PATTERN.matcher(text).matches()) {
                     matched = true;
+                    consecutiveSilenceCount = 0;
                     handleWakeWordMatch(text);
                     break;
                 }
             }
         }
 
-        if (!matched && isServiceRunning && !isAppInForeground) {
-            scheduleRestart(350);
+        if (!matched && isServiceRunning && !isAppInForeground && isScreenOn) {
+            scheduleRestart(400);
         }
     }
 
@@ -287,6 +332,7 @@ public class WakeWordService extends Service implements RecognitionListener {
         if (matches != null) {
             for (String text : matches) {
                 if (text != null && WAKE_WORD_PATTERN.matcher(text).matches()) {
+                    consecutiveSilenceCount = 0;
                     handleWakeWordMatch(text);
                     break;
                 }
@@ -298,10 +344,20 @@ public class WakeWordService extends Service implements RecognitionListener {
     public void onError(int error) {
         isListeningActive = false;
         cleanupRecognizer();
-        if (isServiceRunning && !isAppInForeground) {
-            // Silence / No match timeout (6 or 7) restarts quickly; others give a small buffer
-            long delay = (error == 6 || error == 7) ? 350 : 800;
-            scheduleRestart(delay);
+        if (isServiceRunning && !isAppInForeground && isScreenOn) {
+            // Silence / No match timeout (6 or 7)
+            if (error == 6 || error == 7) {
+                consecutiveSilenceCount++;
+                if (consecutiveSilenceCount >= 3) {
+                    // Back off to 6 seconds instead of continuously locking microphone
+                    Log.d(TAG, "Silence threshold reached (" + consecutiveSilenceCount + "), sleeping 6s");
+                    scheduleRestart(6000);
+                    return;
+                }
+                scheduleRestart(500);
+            } else {
+                scheduleRestart(1200);
+            }
         }
     }
 
