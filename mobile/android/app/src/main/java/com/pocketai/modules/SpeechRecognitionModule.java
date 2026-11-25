@@ -17,11 +17,12 @@ import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 
 import java.util.ArrayList;
 
-public class SpeechRecognitionModule extends ReactContextBaseJavaModule implements RecognitionListener {
+public class SpeechRecognitionModule extends ReactContextBaseJavaModule implements RecognitionListener, LifecycleEventListener {
     private static final String TAG = "SpeechRecognition";
     private final ReactApplicationContext reactContext;
     private SpeechRecognizer speechRecognizer;
@@ -31,6 +32,7 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
     public SpeechRecognitionModule(ReactApplicationContext context) {
         super(context);
         this.reactContext = context;
+        context.addLifecycleEventListener(this);
     }
 
     @NonNull
@@ -192,4 +194,20 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
 
     @Override
     public void onEvent(int eventType, Bundle params) {}
+
+    // LifecycleEventListener callbacks to ensure zero microphone lingering
+    @Override
+    public void onHostResume() {}
+
+    @Override
+    public void onHostPause() {
+        Log.i(TAG, "onHostPause: App minimized or locked - destroying speech recognizer immediately");
+        cleanupRecognizer();
+    }
+
+    @Override
+    public void onHostDestroy() {
+        Log.i(TAG, "onHostDestroy: Cleaning up speech recognizer");
+        cleanupRecognizer();
+    }
 }
