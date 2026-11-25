@@ -40,6 +40,9 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -50,4 +53,5 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+    testImplementation 'junit:junit:4.13.2'
 }
