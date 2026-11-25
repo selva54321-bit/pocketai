@@ -174,43 +174,14 @@ public class WakeWordService extends Service implements RecognitionListener {
     }
 
     private void scheduleRestart(long delayMs) {
-        mainHandler.removeCallbacksAndMessages(null);
-        mainHandler.postDelayed(this::startListeningProcess, delayMs);
+        // Zero-background mic: continuous background speech recognition loop is disabled
+        // to eliminate the green privacy dot and eliminate battery drain.
+        // Jackie wakes on-demand via the Samsung Side Button or Home Key (like Bixby & Siri).
     }
 
     private void startListeningProcess() {
-        mainHandler.post(() -> {
-            if (!isServiceRunning || isAppInForeground || !isScreenOn) {
-                Log.d(TAG, "Skip startListening: running=" + isServiceRunning + ", foreground=" + isAppInForeground + ", screenOn=" + isScreenOn);
-                return;
-            }
-
-            try {
-                if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-                    Log.e(TAG, "SpeechRecognizer not available for WakeWordService");
-                    return;
-                }
-
-                cleanupRecognizer();
-
-                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
-                speechRecognizer.setRecognitionListener(this);
-
-                recognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-                recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-                recognizerIntent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
-                recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-                recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
-
-                speechRecognizer.startListening(recognizerIntent);
-                isListeningActive = true;
-                Log.d(TAG, "WakeWordService listening for 'Hey Jackie'...");
-            } catch (Exception e) {
-                Log.e(TAG, "Error starting wake word speech recognizer: " + e.getMessage(), e);
-                cleanupRecognizer();
-                scheduleRestart(1000);
-            }
-        });
+        // Zero-background mic: continuous background speech recognition loop is disabled.
+        cleanupRecognizer();
     }
 
     private synchronized void handleWakeWordMatch(String fullText) {
