@@ -36,6 +36,12 @@ class MainActivity : ReactActivity() {
     val wakeWordTriggered = intent.getBooleanExtra("wake_word_triggered", false)
     val commandText = intent.getStringExtra("command_text") ?: ""
 
+    // Clean up extras immediately so this intent cannot trigger multiple times
+    intent.removeExtra("wake_word_triggered")
+    intent.removeExtra("command_text")
+    intent.removeExtra("assistant_triggered")
+    intent.removeExtra("auto_mic")
+
     if (isAssistAction || isAssistExtra || wakeWordTriggered || commandText.isNotEmpty()) {
       AndroidOperatorModule.emitWakeWordEvent(true, commandText)
     }
