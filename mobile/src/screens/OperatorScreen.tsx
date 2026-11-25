@@ -85,7 +85,7 @@ export const OperatorScreen: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [autoMicEnabled, setAutoMicEnabled] = useState(true);
+  const [autoMicEnabled, setAutoMicEnabled] = useState(false);
   const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
   const [latestResponse, setLatestResponse] = useState<AgentResponse | null>(null);
   const [executionMessage, setExecutionMessage] = useState<string>('');
@@ -252,15 +252,8 @@ export const OperatorScreen: React.FC = () => {
             }
           }
 
-          // If auto-mic enabled, start listening
-          if (autoMicRef.current) {
-            setTimeout(() => {
-              coldBootDoneRef.current = true;
-              startMicSession();
-            }, 450);
-          } else {
-            coldBootDoneRef.current = true;
-          }
+          // Zero-background mic architecture: Do not auto-start microphone on cold launch
+          coldBootDoneRef.current = true;
         } catch (e) {
           console.warn('[PocketAI] Permission / init error:', e);
           coldBootDoneRef.current = true;
@@ -269,7 +262,7 @@ export const OperatorScreen: React.FC = () => {
     };
     initApp();
 
-    // 2. Resume / Return from Home Screen: Auto-start mic & manage wake word background state
+    // 2. Resume / Return from Home Screen: Check connection & ensure background mic is off
     let previousState = AppState.currentState;
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
       console.log(`[PocketAI] AppState transitioned from ${previousState} -> ${nextAppState}`);
@@ -278,28 +271,16 @@ export const OperatorScreen: React.FC = () => {
         (previousState === 'background' || previousState === 'inactive') &&
         nextAppState === 'active'
       ) {
-        // App is now foreground: re-check edge engine connection & pause background listener
         checkConnection();
         checkAccessibility();
-        AndroidNative.wakeWord.setForegroundState(true).catch(() => {});
-        if (autoMicRef.current) {
-          setTimeout(() => {
-            console.log('[PocketAI] Auto-starting mic on app resume from home screen...');
-            startMicSession();
-          }, 500);
-        }
+        // Zero-background mic: do NOT start microphone on resume
       } else if (nextAppState === 'background') {
-        // App backgrounded: release foreground speech recognizer cleanly
+        // App backgrounded: release speech recognizer cleanly and immediately
         AndroidNative.speech.stop().catch(() => {});
         setIsListening(false);
         isListeningRef.current = false;
-        // Resume background 'Hey Jackie' detection (Screen-On only) if enabled
-        if (wakeWordRef.current) {
-          AndroidNative.wakeWord.setForegroundState(false).catch(() => {});
-        } else {
-          // Zero background mic: ensure service is stopped
-          AndroidNative.wakeWord.stop().catch(() => {});
-        }
+        // Zero background mic: ensure service is stopped
+        AndroidNative.wakeWord.stop().catch(() => {});
       }
       previousState = nextAppState;
     };
@@ -348,6 +329,11 @@ export const OperatorScreen: React.FC = () => {
   const handleSendCommand = async (commandText: string) => {
     const textToRun = commandText.trim();
     if (!textToRun) return;
+
+    // Immediately release microphone
+    AndroidNative.speech.stop().catch(() => {});
+    setIsListening(false);
+    isListeningRef.current = false;
 
     setLoading(true);
     setExecutionMessage('');
@@ -411,23 +397,13 @@ export const OperatorScreen: React.FC = () => {
         <View style={styles.headerRow}>
           <Text style={styles.title}>PocketAI Operator</Text>
           <View style={styles.badgesGroup}>
-            {/* 'Hey Jackie' Background Wake Word Toggle Badge */}
+            {/* Samsung Bixby Mode Assistant Badge */}
             <TouchableOpacity
-              style={[styles.autoMicBadge, wakeWordEnabled ? styles.wakeWordOn : styles.autoMicOff]}
-              onPress={toggleWakeWord}
+              style={[styles.autoMicBadge, styles.wakeWordOn]}
+              onPress={handleOpenAssistantSettings}
             >
-              <Text style={[styles.autoMicText, wakeWordEnabled && styles.wakeWordText]}>
-                {wakeWordEnabled ? '⚡ Hands-Free: ON' : '🔇 Hands-Free: OFF'}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Auto-Mic on Open Toggle Badge */}
-            <TouchableOpacity
-              style={[styles.autoMicBadge, autoMicEnabled ? styles.autoMicOn : styles.autoMicOff]}
-              onPress={() => setAutoMicEnabled((prev) => !prev)}
-            >
-              <Text style={styles.autoMicText}>
-                {autoMicEnabled ? '🎙️ Mic: ON' : '🔇 Mic: OFF'}
+              <Text style={[styles.autoMicText, styles.wakeWordText]}>
+                ⚡ Bixby Mode: Active
               </Text>
             </TouchableOpacity>
 
