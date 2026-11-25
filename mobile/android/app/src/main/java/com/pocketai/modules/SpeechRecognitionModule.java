@@ -22,6 +22,8 @@ import com.facebook.react.modules.core.DeviceEventManagerModule;
 
 import java.util.ArrayList;
 
+import com.pocketai.services.WakeWordService;
+
 public class SpeechRecognitionModule extends ReactContextBaseJavaModule implements RecognitionListener, LifecycleEventListener {
     private static final String TAG = "SpeechRecognition";
     private final ReactApplicationContext reactContext;
@@ -71,6 +73,7 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
             speechRecognizer = null;
         }
         isCurrentlyListening = false;
+        WakeWordService.resumeListening();
     }
 
     @ReactMethod
@@ -83,13 +86,22 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
                     return;
                 }
 
+                // SYNCHRONOUSLY PAUSE WAKE WORD SERVICE SO MIC HARDWARE IS 100% FREE
+                WakeWordService.pauseListening();
+
                 if (!SpeechRecognizer.isRecognitionAvailable(reactContext)) {
                     Log.e(TAG, "SpeechRecognizer is NOT available on this device");
+                    WakeWordService.resumeListening();
                     promise.reject("UNAVAILABLE", "Speech recognition is not available on this device.");
                     return;
                 }
 
-                cleanupRecognizer();
+                if (speechRecognizer != null) {
+                    try {
+                        speechRecognizer.destroy();
+                    } catch (Exception ignored) {}
+                    speechRecognizer = null;
+                }
 
                 speechRecognizer = SpeechRecognizer.createSpeechRecognizer(reactContext);
                 speechRecognizer.setRecognitionListener(this);
@@ -99,6 +111,11 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
                 intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
                 intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
                 intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, reactContext.getPackageName());
+
+                // EXTENDED SILENCE TIMEOUTS (Prevents premature mic cutoff)
+                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3500L);
+                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L);
+                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 2000L);
 
                 speechRecognizer.startListening(intent);
                 isCurrentlyListening = true;
