@@ -52,6 +52,8 @@ def sanitize_text(text: str) -> str:
     cleaned = re.sub(r'(\d+),(\d+)', r'\1\2', text)
     # Normalize wi-fi / wifi
     cleaned = re.sub(r'\bwi-fi\b', 'wifi', cleaned, flags=re.IGNORECASE)
+    # Strip wake-word prefixes if user spoke "Hey Jackie", "Jackie", "Hi Jackie", "Ok Jackie"
+    cleaned = re.sub(r'^(hey\s+jackie|hi\s+jackie|ok\s+jackie|jackie)[,\s:]*', '', cleaned, flags=re.IGNORECASE).strip()
 
     # 1. Calling commands: Capitalize target contact name so Needle 3 preserves multi-word proper nouns & acronyms
     m_call = re.match(r'^(call|dial|phone|make a call to)\s+(.+)$', cleaned, re.IGNORECASE)
