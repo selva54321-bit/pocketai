@@ -53,6 +53,23 @@ public class WakeWordService extends Service implements RecognitionListener {
     public static volatile boolean isScreenOn = true;
     public static WakeWordService instance = null;
 
+    public static synchronized void pauseListening() {
+        Log.i(TAG, "pauseListening() synchronously invoked");
+        isAppInForeground = true;
+        if (instance != null) {
+            instance.mainHandler.removeCallbacksAndMessages(null);
+            instance.cleanupRecognizer();
+        }
+    }
+
+    public static synchronized void resumeListening() {
+        Log.i(TAG, "resumeListening() synchronously invoked");
+        isAppInForeground = false;
+        if (instance != null && isServiceRunning && isScreenOn) {
+            instance.scheduleRestart(600);
+        }
+    }
+
     private SpeechRecognizer speechRecognizer;
     private Intent recognizerIntent;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -149,8 +166,8 @@ public class WakeWordService extends Service implements RecognitionListener {
         );
 
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("PocketAI Voice Trigger Active")
-            .setContentText("Listening for 'Hey Jackie'...")
+            .setContentTitle("PocketAI Jackie Voice Active")
+            .setContentText("Listening for 'Hey Jackie' while screen is ON")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
@@ -164,9 +181,9 @@ public class WakeWordService extends Service implements RecognitionListener {
         }
 
         isServiceRunning = true;
-        Log.i(TAG, "WakeWordService started as foreground service");
+        Log.i(TAG, "WakeWordService started as foreground service (Screen-ON Hands-Free)");
 
-        if (!isAppInForeground) {
+        if (isScreenOn && !isAppInForeground) {
             scheduleRestart(500);
         }
 
@@ -174,14 +191,60 @@ public class WakeWordService extends Service implements RecognitionListener {
     }
 
     private void scheduleRestart(long delayMs) {
-        // Zero-background mic: continuous background speech recognition loop is disabled
-        // to eliminate the green privacy dot and eliminate battery drain.
-        // Jackie wakes on-demand via the Samsung Side Button or Home Key (like Bixby & Siri).
+        if (!isScreenOn || !isServiceRunning || isAppInForeground) {
+            cleanupRecognizer();
+            return;
+        }
+        mainHandler.removeCallbacksAndMessages(null);
+        mainHandler.postDelayed(this::startListeningProcess, delayMs);
     }
 
     private void startListeningProcess() {
-        // Zero-background mic: continuous background speech recognition loop is disabled.
-        cleanupRecognizer();
+        if (!isScreenOn || !isServiceRunning || isAppInForeground) {
+            cleanupRecognizer();
+            return;
+        }
+
+        mainHandler.post(() -> {
+            try {
+                if (!isScreenOn || !isServiceRunning || isAppInForeground) {
+                    cleanupRecognizer();
+                    return;
+                }
+
+                if (isListeningActive && speechRecognizer != null) {
+                    return;
+                }
+
+                cleanupRecognizer();
+
+                if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+                    Log.e(TAG, "SpeechRecognizer not available on device");
+                    return;
+                }
+
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+                speechRecognizer.setRecognitionListener(this);
+
+                if (recognizerIntent == null) {
+                    recognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                    recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                    recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+                    recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+                    recognizerIntent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
+                }
+
+                speechRecognizer.startListening(recognizerIntent);
+                isListeningActive = true;
+                Log.i(TAG, "WakeWordService: Listening for 'Hey Jackie' (Screen is ON)...");
+            } catch (Exception e) {
+                Log.e(TAG, "startListeningProcess failed: " + e.getMessage());
+                cleanupRecognizer();
+                if (isScreenOn && isServiceRunning && !isAppInForeground) {
+                    scheduleRestart(1500);
+                }
+            }
+        });
     }
 
     private synchronized void handleWakeWordMatch(String fullText) {
@@ -243,8 +306,7 @@ public class WakeWordService extends Service implements RecognitionListener {
             }
         }
 
-        // Notify JS module directly if instance exists
-        AndroidOperatorModule.emitWakeWordEvent(true, command);
+        // MainActivity handles intent and delivers event cleanly without duplicates
     }
 
     private void cleanupRecognizer() {
