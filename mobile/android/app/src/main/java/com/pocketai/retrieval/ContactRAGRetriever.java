@@ -247,7 +247,25 @@ public class ContactRAGRetriever {
             return new RAGResult(null, 0.0, Collections.emptyList());
         }
 
-        // Rank all documents using RAG similarity model
+        List<ScoredContact> scoredList = rankCandidates(query, docs);
+
+        if (!scoredList.isEmpty() && scoredList.get(0).score >= 0.30) {
+            ScoredContact top = scoredList.get(0);
+            return new RAGResult(top.doc, top.score, scoredList.subList(0, Math.min(5, scoredList.size())));
+        }
+
+        return new RAGResult(null, 0.0, scoredList);
+    }
+
+    /**
+     * Pure ranking function evaluated across an in-memory candidate corpus.
+     */
+    public static List<ScoredContact> rankCandidates(String query, List<ContactDocument> docs) {
+        String cleanQuery = normalize(query);
+        Set<String> queryTokens = extractTokens(cleanQuery);
+        Map<String, Integer> queryTrigrams = extractTrigrams(cleanQuery);
+        boolean qWantsRelative = queryHasRelative(queryTokens);
+
         List<ScoredContact> scoredList = new ArrayList<>();
         for (ContactDocument doc : docs) {
             double score = 0.0;
@@ -325,11 +343,6 @@ public class ContactRAGRetriever {
                 i + 1, sc.score, sc.doc.displayName, sc.doc.phoneNumber, sc.rationale));
         }
 
-        if (!scoredList.isEmpty() && scoredList.get(0).score >= 0.30) {
-            ScoredContact top = scoredList.get(0);
-            return new RAGResult(top.doc, top.score, scoredList.subList(0, Math.min(5, scoredList.size())));
-        }
-
-        return new RAGResult(null, 0.0, scoredList);
+        return scoredList;
     }
 }
