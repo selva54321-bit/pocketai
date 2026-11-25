@@ -38,3 +38,17 @@ def test_whatsapp_mithil_bit(agent):
     assert call.name == "send_whatsapp"
     assert "mithil bit" in call.arguments.get("recipient", "").lower()
     assert "on my way" in call.arguments.get("message", "").lower()
+
+def test_hey_jackie_prefix_calling(agent):
+    res = agent.process_query("Hey Jackie, call mithil bit")
+    assert len(res.calls) > 0
+    call = res.calls[0]
+    assert call.name == "make_phone_call"
+    assert "mithil bit" in call.arguments.get("contact_or_number", "").lower()
+
+def test_hey_jackie_prefix_tool(agent):
+    res = agent.process_query("Hey Jackie turn on flashlight")
+    assert len(res.calls) > 0
+    call = res.calls[0]
+    assert call.name == "toggle_flashlight"
+    assert call.arguments.get("enabled") is True
