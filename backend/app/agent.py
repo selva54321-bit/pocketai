@@ -52,6 +52,27 @@ def sanitize_text(text: str) -> str:
     cleaned = re.sub(r'(\d+),(\d+)', r'\1\2', text)
     # Normalize wi-fi / wifi
     cleaned = re.sub(r'\bwi-fi\b', 'wifi', cleaned, flags=re.IGNORECASE)
+
+    # 1. Calling commands: Capitalize target contact name so Needle 3 preserves multi-word proper nouns & acronyms
+    m_call = re.match(r'^(call|dial|phone|make a call to)\s+(.+)$', cleaned, re.IGNORECASE)
+    if m_call:
+        verb = m_call.group(1)
+        target = m_call.group(2).strip()
+        if not re.match(r'^[0-9+\s\-()]+$', target):
+            cleaned = f"{verb} {target.title()}"
+        return cleaned.strip()
+
+    # 2. Messaging commands: Capitalize target recipient before the colon
+    m_msg = re.match(r'^(send\s+whatsapp\s+to|send\s+sms\s+to|send\s+text\s+to|whatsapp\s+to|text\s+to)\s+([^:]+)(:.*)?$', cleaned, re.IGNORECASE)
+    if m_msg:
+        verb = m_msg.group(1)
+        recipient = m_msg.group(2).strip()
+        suffix = m_msg.group(3) or ""
+        if not re.match(r'^[0-9+\s\-()]+$', recipient):
+            recipient = recipient.title()
+        cleaned = f"{verb} {recipient}{suffix}"
+        return cleaned.strip()
+
     return cleaned.strip()
 
 class PocketAIAgent:
