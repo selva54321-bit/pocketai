@@ -86,7 +86,7 @@ export const OperatorScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [autoMicEnabled, setAutoMicEnabled] = useState(false);
-  const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
   const [latestResponse, setLatestResponse] = useState<AgentResponse | null>(null);
   const [executionMessage, setExecutionMessage] = useState<string>('');
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
@@ -101,6 +101,7 @@ export const OperatorScreen: React.FC = () => {
   const isListeningRef = useRef(false);
   const isStartingRef = useRef(false);
   const coldBootDoneRef = useRef(false);
+  const lastExecutedRef = useRef<{ text: string; time: number }>({ text: '', time: 0 });
 
   // Pulse animation when microphone is actively listening
   useEffect(() => {
@@ -155,10 +156,14 @@ export const OperatorScreen: React.FC = () => {
         await AndroidNative.wakeWord.start();
         Alert.alert(
           'Hands-Free Voice Trigger Enabled',
-          'Jackie will listen for "Hey Jackie" while the screen is ON. When the screen turns OFF, the microphone is automatically shut down to eliminate battery drain and privacy indicators.'
+          'Jackie will listen for "Hey Jackie" hands-free while your screen is ON.\n\nWhen your screen turns OFF, the microphone shuts down completely to prevent background battery drain and eliminate privacy dots.'
         );
       } else {
         await AndroidNative.wakeWord.stop();
+        Alert.alert(
+          'Hands-Free Voice Trigger Disabled',
+          'Hands-free listening is OFF.\n\nJackie will only listen when you hold the Side Key, press the Home Button, or tap the mic.'
+        );
       }
     } catch (err: any) {
       console.warn('[PocketAI] Toggle wake word error:', err);
@@ -230,7 +235,7 @@ export const OperatorScreen: React.FC = () => {
             AndroidNative.wakeWord.start().catch((e) => {
               console.warn('[PocketAI] WakeWordService start warning:', e);
             });
-            AndroidNative.wakeWord.setForegroundState(true).catch(() => {});
+            AndroidNative.wakeWord.setForegroundState(false).catch(() => {});
           } else {
             AndroidNative.wakeWord.stop().catch(() => {});
           }
@@ -273,21 +278,29 @@ export const OperatorScreen: React.FC = () => {
       ) {
         checkConnection();
         checkAccessibility();
-        // Zero-background mic: do NOT start microphone on resume
       } else if (nextAppState === 'background') {
-        // App backgrounded: release speech recognizer cleanly and immediately
+        // App backgrounded: release manual speech recognizer cleanly
         AndroidNative.speech.stop().catch(() => {});
         setIsListening(false);
         isListeningRef.current = false;
-        // Zero background mic: ensure service is stopped
-        AndroidNative.wakeWord.stop().catch(() => {});
+        // In background: if wakeWord is disabled, ensure service is stopped
+        if (!wakeWordRef.current) {
+          AndroidNative.wakeWord.stop().catch(() => {});
+        }
       }
       previousState = nextAppState;
     };
     const appStateSub = AppState.addEventListener('change', handleAppStateChange);
 
     // 3. Wake Word Detected Event Listener (emitted when "Hey Jackie" is spoken)
+    let lastWakeTriggerTime = 0;
     const unsubWakeWord = AndroidNative.wakeWord.onDetected((evt) => {
+      const now = Date.now();
+      if (now - lastWakeTriggerTime < 1500) {
+        console.log('[PocketAI] Debouncing duplicate WakeWord event in UI');
+        return;
+      }
+      lastWakeTriggerTime = now;
       console.log('[PocketAI] WakeWord detected event in UI:', evt);
       if (evt.commandText && evt.commandText.trim()) {
         handleSendCommand(evt.commandText.trim());
@@ -329,6 +342,17 @@ export const OperatorScreen: React.FC = () => {
   const handleSendCommand = async (commandText: string) => {
     const textToRun = commandText.trim();
     if (!textToRun) return;
+
+    // Debounce duplicate commands within 2.5 seconds
+    const now = Date.now();
+    if (
+      lastExecutedRef.current.text.toLowerCase() === textToRun.toLowerCase() &&
+      now - lastExecutedRef.current.time < 2500
+    ) {
+      console.log('[PocketAI] Debouncing duplicate command execution:', textToRun);
+      return;
+    }
+    lastExecutedRef.current = { text: textToRun, time: now };
 
     // Immediately release microphone
     AndroidNative.speech.stop().catch(() => {});
@@ -395,7 +419,7 @@ export const OperatorScreen: React.FC = () => {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerRow}>
-          <Text style={styles.title}>PocketAI Operator</Text>
+          <Text style={styles.title}>PocketAI</Text>
           <View style={styles.badgesGroup}>
             {/* Samsung Bixby Mode Assistant Badge */}
             <TouchableOpacity
@@ -403,7 +427,17 @@ export const OperatorScreen: React.FC = () => {
               onPress={handleOpenAssistantSettings}
             >
               <Text style={[styles.autoMicText, styles.wakeWordText]}>
-                ⚡ Bixby Mode: Active
+                ⚡ Bixby Mode
+              </Text>
+            </TouchableOpacity>
+
+            {/* Jackie Screen-ON Hands-Free Hotword Toggle */}
+            <TouchableOpacity
+              style={[styles.autoMicBadge, wakeWordEnabled ? styles.autoMicOn : styles.autoMicOff]}
+              onPress={toggleWakeWord}
+            >
+              <Text style={styles.autoMicText}>
+                {wakeWordEnabled ? '🎙️ Jackie: Screen-ON' : '🔇 Jackie: OFF'}
               </Text>
             </TouchableOpacity>
 
@@ -413,7 +447,7 @@ export const OperatorScreen: React.FC = () => {
               onPress={() => setTtsEnabled((prev) => !prev)}
             >
               <Text style={styles.autoMicText}>
-                {ttsEnabled ? '🔊 Voice: ON' : '🔇 Voice: OFF'}
+                {ttsEnabled ? '🔊 Voice' : '🔇 Mute'}
               </Text>
             </TouchableOpacity>
 
