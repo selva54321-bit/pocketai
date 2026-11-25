@@ -36,11 +36,15 @@ import com.facebook.react.modules.core.DeviceEventManagerModule;
 import com.pocketai.services.NotificationListener;
 import com.pocketai.services.PocketAIAccessibilityService;
 import com.pocketai.services.WakeWordService;
+import com.pocketai.retrieval.ContactRAGRetriever;
+import com.pocketai.retrieval.ContactRAGRetriever.RAGResult;
+import com.pocketai.retrieval.ContactRAGRetriever.ContactDocument;
 
 import android.content.IntentFilter;
 import android.os.BatteryManager;
 
 import java.util.Set;
+import java.util.Locale;
 
 public class AndroidOperatorModule extends ReactContextBaseJavaModule {
     private static final String TAG = "AndroidOperator";
@@ -61,10 +65,22 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
     }
 
     // -------------------------------------------------------------
-    // Contact Resolution Helper
+    // Contact Resolution Helper (On-Device RAG Retrieval)
     // -------------------------------------------------------------
 
-    private String resolveContactNumber(String contactName) {
+    public static class ResolvedContactInfo {
+        public String matchedName;
+        public String phoneNumber;
+        public double confidence;
+
+        public ResolvedContactInfo(String matchedName, String phoneNumber, double confidence) {
+            this.matchedName = matchedName;
+            this.phoneNumber = phoneNumber;
+            this.confidence = confidence;
+        }
+    }
+
+    private ResolvedContactInfo resolveContactWithRAG(String contactName) {
         if (contactName == null || contactName.trim().isEmpty()) {
             return null;
         }
@@ -72,7 +88,7 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
         // If it's already a numeric phone number, strip non-digits and return
         String pureDigits = contactName.replaceAll("[^0-9+]", "");
         if (pureDigits.length() >= 7) {
-            return pureDigits;
+            return new ResolvedContactInfo(contactName, pureDigits, 1.0);
         }
 
         // Check if READ_CONTACTS permission is available
@@ -84,35 +100,24 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
 
         try {
             ContentResolver cr = reactContext.getContentResolver();
-            Uri lookupUri = Uri.withAppendedPath(
-                ContactsContract.CommonDataKinds.Phone.CONTENT_FILTER_URI,
-                Uri.encode(contactName.trim())
-            );
-
-            String[] projection = new String[]{
-                ContactsContract.CommonDataKinds.Phone.NUMBER,
-                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
-            };
-
-            try (Cursor cursor = cr.query(lookupUri, projection, null, null, null)) {
-                if (cursor != null && cursor.moveToFirst()) {
-                    int numberIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
-                    int nameIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME);
-                    if (numberIdx != -1) {
-                        String number = cursor.getString(numberIdx);
-                        String displayName = nameIdx != -1 ? cursor.getString(nameIdx) : contactName;
-                        Log.d(TAG, "Resolved contact '" + displayName + "' to number: " + number);
-                        if (number != null && !number.isEmpty()) {
-                            return number.replaceAll("[^0-9+]", "");
-                        }
-                    }
-                }
+            RAGResult ragResult = ContactRAGRetriever.retrieveBestContact(cr, contactName);
+            if (ragResult != null && ragResult.bestMatch != null) {
+                ContactDocument doc = ragResult.bestMatch;
+                String cleanNumber = doc.phoneNumber.replaceAll("[^0-9+]", "");
+                Log.d(TAG, String.format(Locale.US, "RAG resolved '%s' -> '%s' (%s) with confidence %.3f",
+                    contactName, doc.displayName, cleanNumber, ragResult.confidence));
+                return new ResolvedContactInfo(doc.displayName, cleanNumber, ragResult.confidence);
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error resolving contact: " + e.getMessage());
+            Log.e(TAG, "Error in RAG contact resolution: " + e.getMessage(), e);
         }
 
         return null;
+    }
+
+    private String resolveContactNumber(String contactName) {
+        ResolvedContactInfo info = resolveContactWithRAG(contactName);
+        return info != null ? info.phoneNumber : null;
     }
 
     // -------------------------------------------------------------
@@ -172,8 +177,9 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void makeCall(String contactOrNumber, Promise promise) {
         try {
-            String resolvedNumber = resolveContactNumber(contactOrNumber);
-            String numberToCall = (resolvedNumber != null && !resolvedNumber.isEmpty()) ? resolvedNumber : contactOrNumber;
+            ResolvedContactInfo info = resolveContactWithRAG(contactOrNumber);
+            String numberToCall = (info != null && !info.phoneNumber.isEmpty()) ? info.phoneNumber : contactOrNumber;
+            String displayName = (info != null && !info.matchedName.isEmpty()) ? info.matchedName : contactOrNumber;
 
             Intent callIntent;
             // Check if CALL_PHONE permission is granted for instant direct call
@@ -183,14 +189,14 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
                 callIntent.setData(Uri.parse("tel:" + numberToCall));
                 callIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 reactContext.startActivity(callIntent);
-                promise.resolve("Calling " + contactOrNumber + " (" + numberToCall + ")");
+                promise.resolve("Calling " + displayName + " (" + numberToCall + ")");
             } else {
                 // Fallback to dialer if user hasn't granted CALL_PHONE permission yet
                 callIntent = new Intent(Intent.ACTION_DIAL);
                 callIntent.setData(Uri.parse("tel:" + numberToCall));
                 callIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 reactContext.startActivity(callIntent);
-                promise.resolve("Opened dialer for: " + contactOrNumber);
+                promise.resolve("Opened dialer for " + displayName + " (" + numberToCall + ")");
             }
         } catch (Exception e) {
             promise.reject("CALL_ERROR", e.getMessage());
@@ -200,15 +206,16 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void sendSms(String recipient, String message, Promise promise) {
         try {
-            String resolvedNumber = resolveContactNumber(recipient);
-            String target = (resolvedNumber != null && !resolvedNumber.isEmpty()) ? resolvedNumber : recipient;
+            ResolvedContactInfo info = resolveContactWithRAG(recipient);
+            String target = (info != null && !info.phoneNumber.isEmpty()) ? info.phoneNumber : recipient;
+            String displayName = (info != null && !info.matchedName.isEmpty()) ? info.matchedName : recipient;
 
             Intent smsIntent = new Intent(Intent.ACTION_SENDTO);
             smsIntent.setData(Uri.parse("smsto:" + (target != null ? target : "")));
             smsIntent.putExtra("sms_body", message);
             smsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             reactContext.startActivity(smsIntent);
-            promise.resolve("SMS prepared for: " + (resolvedNumber != null ? recipient + " (" + resolvedNumber + ")" : recipient));
+            promise.resolve("SMS prepared for: " + displayName + " (" + target + ")");
         } catch (Exception e) {
             promise.reject("SMS_ERROR", e.getMessage());
         }
@@ -217,10 +224,11 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void sendWhatsApp(String recipient, String message, Promise promise) {
         try {
-            String resolvedNumber = resolveContactNumber(recipient);
-            String phoneToUse = (resolvedNumber != null && !resolvedNumber.isEmpty()) 
-                ? resolvedNumber 
+            ResolvedContactInfo info = resolveContactWithRAG(recipient);
+            String phoneToUse = (info != null && !info.phoneNumber.isEmpty()) 
+                ? info.phoneNumber 
                 : (recipient != null ? recipient.replaceAll("[^0-9+]", "") : "");
+            String displayName = (info != null && !info.matchedName.isEmpty()) ? info.matchedName : recipient;
 
             // For WhatsApp api.whatsapp.com URL, phone number must be purely digits without '+'
             String cleanPhone = phoneToUse.replaceAll("[^0-9]", "");
@@ -241,12 +249,12 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
             if (waIntent.resolveActivity(reactContext.getPackageManager()) != null) {
                 PocketAIAccessibilityService.shouldAutoSendWhatsApp = true;
                 reactContext.startActivity(waIntent);
-                promise.resolve("Opened WhatsApp for " + recipient + (cleanPhone.isEmpty() ? "" : " (" + cleanPhone + ")"));
+                promise.resolve("Opened WhatsApp for " + displayName + (cleanPhone.isEmpty() ? "" : " (" + cleanPhone + ")"));
             } else {
                 Intent webWaIntent = new Intent(Intent.ACTION_VIEW, uri);
                 webWaIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 reactContext.startActivity(webWaIntent);
-                promise.resolve("Opened web WhatsApp for " + recipient);
+                promise.resolve("Opened web WhatsApp for " + displayName);
             }
         } catch (Exception e) {
             promise.reject("WHATSAPP_ERROR", e.getMessage());
