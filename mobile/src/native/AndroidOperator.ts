@@ -414,6 +414,14 @@ export const AndroidNative = {
         callback(evt);
       });
       return () => sub.remove();
+    },
+
+    onStatusChanged(callback: (enabled: boolean) => void) {
+      if (!operatorEmitter) return () => {};
+      const sub = operatorEmitter.addListener('onWakeWordStatusChanged', (evt: { enabled: boolean }) => {
+        callback(Boolean(evt?.enabled));
+      });
+      return () => sub.remove();
     }
   },
 
