@@ -139,12 +139,12 @@ export const OperatorScreen: React.FC = () => {
       return;
     }
     isStartingRef.current = true;
+    setIsListening(true);
+    isListeningRef.current = true;
     try {
       console.log('[PocketAI] Requesting speech.start()...');
       await AndroidNative.speech.start();
       console.log('[PocketAI] Speech recognition started active');
-      setIsListening(true);
-      isListeningRef.current = true;
     } catch (err: any) {
       console.warn('[PocketAI] Speech start error:', err);
       setIsListening(false);
