@@ -189,9 +189,9 @@ def navigate_to(destination: str):
     }
 
 @cactus.tool(triggers=[
-    r"\b(google|search the web|search web|search for)\b",
+    r"^(?!.*\b(youtube|yt|youtubr)\b).*\b(google|search the web|search web|search for)\b",
     r"\bwho (is|was)\b",
-    r"\bsearch\b"
+    r"^(?!.*\b(youtube|yt|youtubr)\b).*\bsearch\b"
 ])
 def search_web(query: str):
     """Search Google or the web for general queries, information, or websites."""
@@ -201,11 +201,13 @@ def search_web(query: str):
     }
 
 @cactus.tool(triggers=[
-    r"\b(search youtube|play on youtube|youtube search)\b",
-    r"\bplay\b.*\bon youtube\b"
+    r"\b(search|find|play|watch|stream|listen)\b.*\b(on\s+youtube|in\s+youtube|from\s+youtube|youtube|youtubr|yt)\b",
+    r"\b(youtube|youtubr|yt)\b.*\b(search|play|find|for)\b",
+    r"\bplay\b.*\b(youtube|youtubr|yt)\b",
+    r"\b(on|in)\s+(youtube|youtubr|yt)\b"
 ])
 def search_youtube(query: str):
-    """Search YouTube or play a video, song, or creator on YouTube."""
+    """Search YouTube or play a video, song, music, creator, or channel on the YouTube app."""
     return {
         "action": "search_youtube",
         "query": query.strip()
