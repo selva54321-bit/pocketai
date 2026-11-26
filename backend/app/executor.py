@@ -174,16 +174,32 @@ class ActionExecutor:
 
         # 15. Web Search
         elif call_name == "search_web":
+            raw_query = str(clean_args.get("query", "")).strip()
+            # Defensive redirect: If web search was invoked for a YouTube query, route to YouTube app
+            if re.search(r'\b(youtube|youtubr|yt)\b', raw_query, re.IGNORECASE):
+                yt_target = re.sub(r'\b(?:play|search(?:\s+for)?|watch|listen(?:\s+to)?|find)\s+', '', raw_query, flags=re.IGNORECASE)
+                yt_target = re.sub(r'\b(?:on|in|from|via|with|inside)\s+(?:youtube|youtubr|yt)\b', '', yt_target, flags=re.IGNORECASE).strip()
+                if not yt_target or yt_target.lower() in ("youtube", "youtubr", "yt"):
+                    yt_target = "songs"
+                return {
+                    "android_action": "SEARCH_YOUTUBE",
+                    "query": yt_target
+                }
             return {
                 "android_action": "SEARCH_WEB",
-                "query": str(clean_args.get("query", "")).strip()
+                "query": raw_query
             }
 
         # 16. YouTube Search
         elif call_name == "search_youtube":
+            raw_query = str(clean_args.get("query", "")).strip()
+            cleaned_q = re.sub(r'\b(?:on|in|from|via|with|inside)\s+(?:youtube|youtubr|yt)\b', '', raw_query, flags=re.IGNORECASE).strip()
+            cleaned_q = re.sub(r'^(?:play|search(?:\s+for)?|watch|listen(?:\s+to)?|find)\s+', '', cleaned_q, flags=re.IGNORECASE).strip()
+            if not cleaned_q or cleaned_q.lower() in ("youtube", "youtubr", "yt"):
+                cleaned_q = "songs"
             return {
                 "android_action": "SEARCH_YOUTUBE",
-                "query": str(clean_args.get("query", "")).strip()
+                "query": cleaned_q
             }
 
         # 17. Device Settings
