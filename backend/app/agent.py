@@ -22,6 +22,7 @@ from app.tools.system_tools import (
     navigate_to,
     search_web,
     search_youtube,
+    search_spotify,
     control_media,
     take_note,
     copy_to_clipboard,
@@ -92,29 +93,33 @@ def sanitize_text(text: str) -> str:
         cleaned = f"{verb} {recipient}{suffix}"
         return cleaned.strip()
 
-    # 3. YouTube commands: Normalize speech typos (youtubr, youtub, you tube, yt) & prepositions (in/from/at -> on)
-    cleaned = re.sub(r'\b(youtubr|youtub|you tube|yt)\b', 'youtube', cleaned, flags=re.IGNORECASE)
-    if re.search(r'\byoutube\b', cleaned, re.IGNORECASE):
-        # Pattern A: 'play/search/watch/listen to/find <target> on/in/from/at youtube'
-        m_yt1 = re.match(r'^(?:play|search(?:\s+for)?|watch|listen(?:\s+to)?|find)\s+(.+?)\s+(?:on|in|from|at|via|with|inside)\s+youtube$', cleaned, re.IGNORECASE)
-        if m_yt1:
-            target = m_yt1.group(1).strip()
-            return f"play {target} on youtube"
+    # 3. YouTube & Spotify commands: Normalize speech typos & prepositions (in/from/at -> on)
+    cleaned = re.sub(r'\b(youtubes|youtubr|youtub|you tube|yt)\b', 'youtube', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\b(spotifi|spootify|spotfy)\b', 'spotify', cleaned, flags=re.IGNORECASE)
 
-        # Pattern B: 'search/play youtube for <target>'
-        m_yt2 = re.match(r'^(?:search|play|find)\s+youtube\s+(?:for\s+)?(.+)$', cleaned, re.IGNORECASE)
-        if m_yt2:
-            target = m_yt2.group(1).strip()
-            return f"play {target} on youtube"
+    for platform_name in ('youtube', 'spotify'):
+        if re.search(rf'\b{platform_name}\b', cleaned, re.IGNORECASE):
+            m_p1 = re.match(
+                rf'^(?:play|search(?:\s+for)?|watch|listen(?:\s+to)?|find)\s+(.+?)\s+(?:on|in|from|at|via|with|inside)\s+{platform_name}$',
+                cleaned,
+                re.IGNORECASE,
+            )
+            if m_p1:
+                target = m_p1.group(1).strip()
+                return f"play {target} on {platform_name}"
 
-        # Pattern C: 'play on/in youtube <target>'
-        m_yt3 = re.match(r'^play\s+(?:on|in)\s+youtube\s+(.+)$', cleaned, re.IGNORECASE)
-        if m_yt3:
-            target = m_yt3.group(1).strip()
-            return f"play {target} on youtube"
+            m_p2 = re.match(rf'^(?:search|play|find)\s+{platform_name}\s+(?:for\s+)?(.+)$', cleaned, re.IGNORECASE)
+            if m_p2:
+                target = m_p2.group(1).strip()
+                return f"play {target} on {platform_name}"
 
-        # Normalize any remaining "in/from/at youtube" to "on youtube"
-        cleaned = re.sub(r'\b(in|from|at|via|with|inside)\s+youtube\b', 'on youtube', cleaned, flags=re.IGNORECASE)
+            m_p3 = re.match(rf'^play\s+(?:on|in|from)\s+{platform_name}\s+(.+)$', cleaned, re.IGNORECASE)
+            if m_p3:
+                target = m_p3.group(1).strip()
+                return f"play {target} on {platform_name}"
+
+            cleaned = re.sub(rf'\b(in|from|at|via|with|inside)\s+{platform_name}\b', f'on {platform_name}', cleaned, flags=re.IGNORECASE)
+            break
 
     return cleaned.strip()
 
@@ -140,6 +145,7 @@ class PocketAIAgent:
             navigate_to,
             search_web,
             search_youtube,
+            search_spotify,
             control_media,
             take_note,
             copy_to_clipboard,
@@ -196,26 +202,42 @@ class PocketAIAgent:
         calls = [FunctionCall(name=c["name"], arguments=c.get("arguments", {})) for c in calls_data]
         held = [FunctionCall(name=h["name"], arguments=h.get("arguments", {})) for h in held_data]
 
-        # Post-processing: Ensure YouTube commands always resolve target media query
+        # Post-processing: Ensure YouTube, Spotify & Alarm commands always resolve cleanly
         for c in calls:
-            if c.name == "search_youtube":
+            if c.name == "set_alarm":
+                m_time = re.search(r'\b(\d{1,2})[:.](\d{2})\s*(am|pm)?\b', cleaned_text, re.IGNORECASE)
+                if m_time:
+                    h = int(m_time.group(1))
+                    mins = int(m_time.group(2))
+                    ampm = (m_time.group(3) or "").lower()
+                    if ampm == "pm" and h < 12:
+                        h += 12
+                    elif ampm == "am" and h == 12:
+                        h = 0
+                    if 0 <= h <= 23 and 0 <= mins <= 59:
+                        c.arguments["hour"] = h
+                        c.arguments["minute"] = mins
+            elif c.name == "search_youtube":
                 q = str(c.arguments.get("query", "")).strip()
-                if not q or q.lower() in ("youtube", "on youtube", "in youtube"):
+                if not q or q.lower() in ("youtube", "youtubes", "on youtube", "in youtube", "from youtube"):
                     m = re.search(r'\b(?:play|search(?:\s+for)?|watch|listen(?:\s+to)?|find)\s+(.+?)\s+on\s+youtube\b', cleaned_text, re.IGNORECASE)
-                    if m:
-                        c.arguments["query"] = m.group(1).strip()
-                    else:
-                        c.arguments["query"] = "songs"
-            elif c.name == "search_web":
-                # Defensive reroute: If search_web was picked for a YouTube query, route to search_youtube
-                if re.search(r'\byoutube\b', cleaned_text, re.IGNORECASE):
+                    c.arguments["query"] = m.group(1).strip() if m else "songs"
+            elif c.name == "search_spotify":
+                q = str(c.arguments.get("query", "")).strip()
+                if not q or q.lower() in ("spotify", "on spotify", "in spotify", "from spotify"):
+                    m = re.search(r'\b(?:play|search(?:\s+for)?|listen(?:\s+to)?|find)\s+(.+?)\s+on\s+spotify\b', cleaned_text, re.IGNORECASE)
+                    c.arguments["query"] = m.group(1).strip() if m else "songs"
+            elif c.name in ("search_web", "control_media", "open_application"):
+                if re.search(r'\byoutube\b', cleaned_text, re.IGNORECASE) and re.search(r'\b(play|search|watch|listen|find)\b', cleaned_text, re.IGNORECASE):
                     c.name = "search_youtube"
                     m = re.search(r'\b(?:play|search(?:\s+for)?|watch|listen(?:\s+to)?|find)\s+(.+?)\s+on\s+youtube\b', cleaned_text, re.IGNORECASE)
-                    if m:
-                        c.arguments["query"] = m.group(1).strip()
-                    else:
-                        clean_q = re.sub(r'\b(on|in|from|via)?\s*youtube\b', '', str(c.arguments.get("query", "")), flags=re.IGNORECASE).strip()
-                        c.arguments["query"] = clean_q or "songs"
+                    clean_q = m.group(1).strip() if m else re.sub(r'\b(on|in|from|via)?\s*youtube\b', '', str(c.arguments.get("query", "")), flags=re.IGNORECASE).strip()
+                    c.arguments = {"query": clean_q or "songs"}
+                elif re.search(r'\bspotify\b', cleaned_text, re.IGNORECASE) and re.search(r'\b(play|search|listen|find)\b', cleaned_text, re.IGNORECASE):
+                    c.name = "search_spotify"
+                    m = re.search(r'\b(?:play|search(?:\s+for)?|listen(?:\s+to)?|find)\s+(.+?)\s+on\s+spotify\b', cleaned_text, re.IGNORECASE)
+                    clean_q = m.group(1).strip() if m else re.sub(r'\b(on|in|from|via)?\s*spotify\b', '', str(c.arguments.get("query", "")), flags=re.IGNORECASE).strip()
+                    c.arguments = {"query": clean_q or "songs"}
 
         telemetry = {
             "prefill_tps": raw_res.get("prefill_tps"),
