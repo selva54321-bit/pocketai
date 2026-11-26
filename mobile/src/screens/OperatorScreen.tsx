@@ -204,11 +204,20 @@ export const OperatorScreen: React.FC = () => {
   const handleBadgePress = async () => {
     const ok = await checkConnection();
     if (ok) {
-      Alert.alert('Needle 3 Engine', 'Connected successfully to backend on port 8000.');
+      if (apiClient.isEmbedded) {
+        Alert.alert(
+          'Needle 3 Embedded',
+          'Running 100% locally inside this APK via Chaquopy CPython & ARM64 Cactus Engine.\n\nNo external server, Termux, or USB connection required.'
+        );
+      } else {
+        Alert.alert('Needle 3 Engine', 'Connected successfully to backend on port 8000.');
+      }
     } else {
       Alert.alert(
-        'Backend Offline',
-        'Cannot connect to Needle 3 Edge backend (port 8000).\n\nPlease verify:\n1. USB cable is plugged in\n2. Run: adb reverse tcp:8000 tcp:8000\n3. Backend server is running: python run.py',
+        'Engine Initializing / Offline',
+        apiClient.isEmbedded
+          ? 'Embedded Python AI engine failed to initialize. Check device logs.'
+          : 'Cannot connect to Needle 3 Edge backend (port 8000).\n\nPlease verify:\n1. USB cable is plugged in\n2. Run: adb reverse tcp:8000 tcp:8000\n3. Backend server is running: python run.py',
         [
           { text: 'Retry', onPress: checkConnection },
           { text: 'OK', style: 'cancel' },
@@ -218,9 +227,13 @@ export const OperatorScreen: React.FC = () => {
   };
 
   useEffect(() => {
-    // 1. Initial Launch: Verify runtime permissions, arm assistant/wake-word, and trigger auto-listen
+    // 1. Initial Launch: Verify runtime permissions, warm up embedded agent, and check state
     const initApp = async () => {
-      checkConnection();
+      if (AndroidNative.agent.isAvailable) {
+        AndroidNative.agent.warmUp().then(() => checkConnection()).catch(() => {});
+      } else {
+        checkConnection();
+      }
       checkAccessibility();
       if (Platform.OS === 'android') {
         try {
@@ -494,7 +507,13 @@ export const OperatorScreen: React.FC = () => {
                   backendConnected === null && styles.pendingText,
                 ]}
               >
-                {backendConnected === false ? 'Offline' : backendConnected ? 'Needle 3' : 'Checking...'}
+                {backendConnected === false
+                  ? 'Offline'
+                  : backendConnected
+                  ? apiClient.isEmbedded
+                    ? 'On-Device'
+                    : 'Needle 3'
+                  : 'Booting...'}
               </Text>
             </TouchableOpacity>
           </View>
