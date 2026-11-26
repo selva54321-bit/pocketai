@@ -1,3 +1,4 @@
+import re
 from typing import Any, Dict, Optional
 
 # Known popular package names for standard intents
