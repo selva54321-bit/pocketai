@@ -754,11 +754,23 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
         }
     }
 
+    private static long lastWakeWordEventTime = 0;
+    private static String lastWakeWordText = "";
+
     public static void emitWakeWordEvent(boolean triggered, String commandText) {
+        long now = System.currentTimeMillis();
+        String safeText = commandText != null ? commandText.trim() : "";
+        if (now - lastWakeWordEventTime < 2000 && safeText.equalsIgnoreCase(lastWakeWordText)) {
+            Log.d(TAG, "Debouncing duplicate emitWakeWordEvent: '" + safeText + "'");
+            return;
+        }
+        lastWakeWordEventTime = now;
+        lastWakeWordText = safeText;
+
         if (instance != null && instance.reactContext.hasActiveReactInstance()) {
             WritableMap map = Arguments.createMap();
             map.putBoolean("wakeWordTriggered", triggered);
-            map.putString("commandText", commandText != null ? commandText : "");
+            map.putString("commandText", safeText);
             instance.reactContext
                 .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
                 .emit("onWakeWordDetected", map);
