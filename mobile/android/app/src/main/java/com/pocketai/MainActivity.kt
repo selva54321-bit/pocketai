@@ -10,6 +10,12 @@ import com.pocketai.modules.AndroidOperatorModule
 
 class MainActivity : ReactActivity() {
 
+  companion object {
+    @JvmField
+    @Volatile
+    var isForegroundActive: Boolean = false
+  }
+
   override fun getMainComponentName(): String = "pocketai"
 
   override fun createReactActivityDelegate(): ReactActivityDelegate =
@@ -18,6 +24,16 @@ class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     handleAssistantIntent(intent)
+  }
+
+  override fun onResume() {
+    super.onResume()
+    isForegroundActive = true
+  }
+
+  override fun onPause() {
+    isForegroundActive = false
+    super.onPause()
   }
 
   override fun onNewIntent(intent: Intent?) {
