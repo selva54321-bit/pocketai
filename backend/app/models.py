@@ -23,6 +23,7 @@ class AgentResponse(BaseModel):
     proposed_call: Optional[FunctionCall] = None
     message: Optional[str] = None
     telemetry: Optional[Dict[str, Any]] = None
+    silent_mode: bool = False
 
 class NotificationPayload(BaseModel):
     package_name: str
