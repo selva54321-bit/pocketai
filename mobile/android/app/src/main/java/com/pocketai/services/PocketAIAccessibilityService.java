@@ -78,12 +78,17 @@ public class PocketAIAccessibilityService extends AccessibilityService {
             if (clicked) {
                 pendingYouTubeAutoPlay = false;
                 Log.i(TAG, "Auto-clicked first YouTube video result!");
-            } else if (youTubeAttempts < 14) {
-                youTubeAttempts++;
-                handler.postDelayed(this, 350L);
             } else {
-                pendingYouTubeAutoPlay = false;
-                Log.w(TAG, "Timed out waiting for clickable YouTube first video card");
+                if (youTubeAttempts == 3 || youTubeAttempts == 10) {
+                    dumpClickableNodes(root, "YT_DEBUG");
+                }
+                if (youTubeAttempts < 14) {
+                    youTubeAttempts++;
+                    handler.postDelayed(this, 350L);
+                } else {
+                    pendingYouTubeAutoPlay = false;
+                    Log.w(TAG, "Timed out waiting for clickable YouTube first video card");
+                }
             }
         }
     };
@@ -166,13 +171,48 @@ public class PocketAIAccessibilityService extends AccessibilityService {
     private boolean findAndClickFirstYouTubeVideo(AccessibilityNodeInfo root) {
         if (root == null) return false;
 
-        // Narrow down to YouTube's search results list if present
+        // Check every visible app:id/results container first (YouTube can have multiple id/results views)
         List<AccessibilityNodeInfo> resultsContainers = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/results");
-        AccessibilityNodeInfo searchRoot = (resultsContainers != null && !resultsContainers.isEmpty())
-            ? resultsContainers.get(0)
-            : root;
+        if (resultsContainers != null) {
+            for (AccessibilityNodeInfo container : resultsContainers) {
+                if (container != null && container.isVisibleToUser()) {
+                    Rect r = new Rect();
+                    container.getBoundsInScreen(r);
+                    if (r.width() >= 500 && r.height() >= 400) {
+                        if (clickFirstValidYouTubeCard(container, 0)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
 
-        return clickFirstValidYouTubeCard(searchRoot, 0);
+        // Fallback: scan whole active root tree
+        return clickFirstValidYouTubeCard(root, 0);
+    }
+
+    private void dumpClickableNodes(AccessibilityNodeInfo node, String prefix) {
+        if (node == null) {
+            Log.d(TAG, prefix + ": root is null");
+            return;
+        }
+        Log.d(TAG, prefix + ": pkg=" + node.getPackageName() + " childCount=" + node.getChildCount());
+        dumpNodeRecursive(node, 0, prefix, new int[]{0});
+    }
+
+    private void dumpNodeRecursive(AccessibilityNodeInfo node, int depth, String prefix, int[] printed) {
+        if (node == null || depth > 25 || printed[0] >= 25) return;
+        Rect r = new Rect();
+        node.getBoundsInScreen(r);
+        if (node.isClickable() && r.height() >= 80 && r.width() >= 200) {
+            Log.d(TAG, prefix + " d=" + depth + " cls=" + node.getClassName()
+                + " vis=" + node.isVisibleToUser() + " bounds=" + r.toShortString()
+                + " desc=" + node.getContentDescription() + " text=" + node.getText());
+            printed[0]++;
+        }
+        for (int i = 0; i < node.getChildCount(); i++) {
+            dumpNodeRecursive(node.getChild(i), depth + 1, prefix, printed);
+        }
     }
 
     private boolean clickFirstValidYouTubeCard(AccessibilityNodeInfo node, int depth) {
@@ -181,12 +221,12 @@ public class PocketAIAccessibilityService extends AccessibilityService {
         if (node.isClickable() && node.isVisibleToUser()) {
             Rect rect = new Rect();
             node.getBoundsInScreen(rect);
-            // Full YouTube video card spans wide (>=500px) & tall (>=250px), below search bar/chips (top>=200)
-            if (rect.top >= 200 && rect.width() >= 500 && rect.height() >= 250) {
+            // Full YouTube video card or wide row: top >= 200, bottom <= 2150, wide >= 450, tall >= 180
+            if (rect.top >= 200 && rect.bottom <= 2200 && rect.width() >= 450 && rect.height() >= 180) {
                 if (!isYouTubeAdOrShorts(node, 0) && hasDescendantContent(node, 0)) {
                     boolean clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                     if (!clicked) {
-                        clicked = performGestureTap(rect.centerX(), rect.centerY());
+                        clicked = performGestureTap(rect.centerX(), rect.top + Math.min(200, rect.height() / 3f));
                     }
                     if (clicked) {
                         Log.i(TAG, "Clicked YouTube first video card bounds=" + rect.toShortString() + " depth=" + depth);
