@@ -17,6 +17,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.provider.AlarmClock;
 import android.provider.ContactsContract;
+import android.provider.MediaStore;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -499,15 +500,25 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void searchWeb(String query, Promise promise) {
         try {
-            // Defensive redirect: If query asks for YouTube, always open the native YouTube app instead of browser
+            // Defensive redirect: If query asks for YouTube or Spotify, open the native app directly
             if (query != null && (query.toLowerCase().contains("youtube") || query.toLowerCase().contains("youtubr"))) {
-                String cleanYt = query.replaceAll("(?i)\\b(on|in|from|at|via)\\s+(youtube|youtubr)\\b", "")
+                String cleanYt = query.replaceAll("(?i)\\b(on|in|from|at|via)\\s+(youtubes|youtube|youtubr)\\b", "")
                                       .replaceAll("(?i)\\b(play|search\\s+for|search|watch|listen\\s+to)\\b", "")
-                                      .replaceAll("(?i)\\b(youtube|youtubr)\\b", "")
+                                      .replaceAll("(?i)\\b(youtubes|youtube|youtubr)\\b", "")
                                       .trim();
                 if (cleanYt.isEmpty()) cleanYt = "songs";
                 Log.i(TAG, "Redirecting searchWeb with YouTube query to searchYouTube: " + cleanYt);
                 searchYouTube(cleanYt, promise);
+                return;
+            }
+            if (query != null && (query.toLowerCase().contains("spotify") || query.toLowerCase().contains("spotifi"))) {
+                String cleanSp = query.replaceAll("(?i)\\b(on|in|from|at|via)\\s+(spotify|spotifi)\\b", "")
+                                      .replaceAll("(?i)\\b(play|search\\s+for|search|listen\\s+to)\\b", "")
+                                      .replaceAll("(?i)\\b(spotify|spotifi)\\b", "")
+                                      .trim();
+                if (cleanSp.isEmpty()) cleanSp = "songs";
+                Log.i(TAG, "Redirecting searchWeb with Spotify query to searchSpotify: " + cleanSp);
+                searchSpotify(cleanSp, promise);
                 return;
             }
 
@@ -532,11 +543,13 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
     public void searchYouTube(String query, Promise promise) {
         try {
             if (query != null) {
-                query = query.replaceAll("(?i)\\b(on|in|from|via)\\s+(youtube|youtubr)\\b", "")
+                query = query.replaceAll("(?i)\\b(on|in|from|via)\\s+(youtubes|youtube|youtubr)\\b", "")
                              .replaceAll("(?i)\\b(play|search\\s+for|search|watch|listen\\s+to)\\b", "")
-                             .replaceAll("(?i)\\b(youtube|youtubr)\\b", "")
+                             .replaceAll("(?i)\\b(youtubes|youtube|youtubr)\\b", "")
                              .trim();
                 if (query.isEmpty()) query = "songs";
+            } else {
+                query = "songs";
             }
 
             Intent ytIntent = new Intent(Intent.ACTION_SEARCH);
@@ -545,8 +558,9 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
             ytIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 
             if (ytIntent.resolveActivity(reactContext.getPackageManager()) != null) {
+                PocketAIAccessibilityService.requestYouTubeAutoPlay();
                 reactContext.startActivity(ytIntent);
-                promise.resolve("Searching YouTube for: " + query);
+                promise.resolve("Playing first YouTube result for: " + query);
             } else {
                 Intent webYt = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(query)));
                 webYt.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -555,6 +569,45 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
             }
         } catch (Exception e) {
             promise.reject("YOUTUBE_SEARCH_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void searchSpotify(String query, Promise promise) {
+        try {
+            if (query != null) {
+                query = query.replaceAll("(?i)\\b(on|in|from|via)\\s+(spotify|spotifi)\\b", "")
+                             .replaceAll("(?i)\\b(play|search\\s+for|search|listen\\s+to)\\b", "")
+                             .replaceAll("(?i)\\b(spotify|spotifi)\\b", "")
+                             .trim();
+                if (query.isEmpty()) query = "songs";
+            } else {
+                query = "songs";
+            }
+
+            Intent spIntent = new Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH);
+            spIntent.setPackage("com.spotify.music");
+            spIntent.putExtra(SearchManager.QUERY, query);
+            spIntent.putExtra(MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/*");
+            spIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+            if (spIntent.resolveActivity(reactContext.getPackageManager()) != null) {
+                PocketAIAccessibilityService.requestSpotifyAutoPlay();
+                reactContext.startActivity(spIntent);
+                promise.resolve("Playing first Spotify result for: " + query);
+            } else {
+                Intent uriIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("spotify:search:" + Uri.encode(query)));
+                uriIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                if (uriIntent.resolveActivity(reactContext.getPackageManager()) != null) {
+                    PocketAIAccessibilityService.requestSpotifyAutoPlay();
+                    reactContext.startActivity(uriIntent);
+                    promise.resolve("Playing Spotify search for: " + query);
+                } else {
+                    promise.reject("SPOTIFY_MISSING", "Spotify app is not installed on this device.");
+                }
+            }
+        } catch (Exception e) {
+            promise.reject("SPOTIFY_SEARCH_ERROR", e.getMessage());
         }
     }
 
