@@ -22,7 +22,14 @@ export default function App() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor="#0d1117" />
       <View style={styles.container}>
-        {activeTab === 'operator' ? <OperatorScreen /> : <NotificationsScreen />}
+        <View style={{ flex: 1, display: activeTab === 'operator' ? 'flex' : 'none' }}>
+          <OperatorScreen />
+        </View>
+        {activeTab === 'notifications' && (
+          <View style={{ flex: 1 }}>
+            <NotificationsScreen />
+          </View>
+        )}
 
         {/* Tab Navigation */}
         <View style={styles.tabBar}>
