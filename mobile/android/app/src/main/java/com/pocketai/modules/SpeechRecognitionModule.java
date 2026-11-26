@@ -30,6 +30,8 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
     private SpeechRecognizer speechRecognizer;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private boolean isCurrentlyListening = false;
+    private long lastResultTime = 0;
+    private String lastResultText = "";
 
     public SpeechRecognitionModule(ReactApplicationContext context) {
         super(context);
@@ -192,6 +194,15 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
         String recognized = (matches != null && !matches.isEmpty()) ? matches.get(0) : "";
         Log.i(TAG, "onResults: '" + recognized + "'");
         cleanupRecognizer();
+
+        long now = System.currentTimeMillis();
+        if (!recognized.isEmpty() && recognized.equalsIgnoreCase(lastResultText) && (now - lastResultTime < 2500)) {
+            Log.w(TAG, "SpeechRecognizer: ignoring duplicate onResults within 2.5s: '" + recognized + "'");
+            return;
+        }
+        lastResultText = recognized;
+        lastResultTime = now;
+
         WritableMap map = Arguments.createMap();
         map.putString("text", recognized);
         sendEvent("onSpeechResult", map);
