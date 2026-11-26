@@ -189,9 +189,9 @@ def navigate_to(destination: str):
     }
 
 @cactus.tool(triggers=[
-    r"^(?!.*\b(youtube|yt|youtubr)\b).*\b(google|search the web|search web|search for)\b",
+    r"^(?!.*\b(youtube|youtubes|yt|youtubr|spotify|spotifi)\b).*\b(google|search the web|search web|search for)\b",
     r"\bwho (is|was)\b",
-    r"^(?!.*\b(youtube|yt|youtubr)\b).*\bsearch\b"
+    r"^(?!.*\b(youtube|youtubes|yt|youtubr|spotify|spotifi)\b).*\bsearch\b"
 ])
 def search_web(query: str):
     """Search Google or the web for general queries, information, or websites."""
@@ -201,15 +201,28 @@ def search_web(query: str):
     }
 
 @cactus.tool(triggers=[
-    r"\b(search|find|play|watch|stream|listen)\b.*\b(on\s+youtube|in\s+youtube|from\s+youtube|youtube|youtubr|yt)\b",
-    r"\b(youtube|youtubr|yt)\b.*\b(search|play|find|for)\b",
-    r"\bplay\b.*\b(youtube|youtubr|yt)\b",
-    r"\b(on|in)\s+(youtube|youtubr|yt)\b"
+    r"\b(search|find|play|watch|stream|listen)\b.*\b(on\s+youtube|in\s+youtube|from\s+youtube|youtube|youtubes|youtubr|yt)\b",
+    r"\b(youtube|youtubes|youtubr|yt)\b.*\b(search|play|find|for)\b",
+    r"\bplay\b.*\b(youtube|youtubes|youtubr|yt)\b",
+    r"\b(on|in|from)\s+(youtube|youtubes|youtubr|yt)\b"
 ])
 def search_youtube(query: str):
-    """Search YouTube or play a video, song, music, creator, or channel on the YouTube app."""
+    """Search YouTube and play a video, song, music, creator, or channel on the YouTube app."""
     return {
         "action": "search_youtube",
+        "query": query.strip()
+    }
+
+@cactus.tool(triggers=[
+    r"\b(search|find|play|stream|listen)\b.*\b(on\s+spotify|in\s+spotify|from\s+spotify|spotify|spotifi)\b",
+    r"\b(spotify|spotifi)\b.*\b(search|play|find|for)\b",
+    r"\bplay\b.*\b(spotify|spotifi)\b",
+    r"\b(on|in|from)\s+(spotify|spotifi)\b"
+])
+def search_spotify(query: str):
+    """Search Spotify and play a song, track, album, playlist, or artist on the Spotify app."""
+    return {
+        "action": "search_spotify",
         "query": query.strip()
     }
 
@@ -218,7 +231,7 @@ def search_youtube(query: str):
 # -------------------------------------------------------------
 
 @cactus.tool(triggers=[
-    r"\b(music|song|track)\b.*\b(play|pause|resume|skip|next|previous)\b",
+    r"^(?!.*\b(youtube|youtubes|yt|youtubr|spotify|spotifi)\b).*\b(music|song|track)\b.*\b(play|pause|resume|skip|next|previous)\b",
     r"\b(pause music|resume music|next song|previous song|stop music)\b"
 ])
 def control_media(action: Literal["play_pause", "next", "previous", "stop"]):
