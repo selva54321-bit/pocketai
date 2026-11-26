@@ -105,6 +105,8 @@ export const OperatorScreen: React.FC = () => {
   autoMicRef.current = autoMicEnabled;
   const wakeWordRef = useRef(wakeWordEnabled);
   wakeWordRef.current = wakeWordEnabled;
+  const ttsEnabledRef = useRef(ttsEnabled);
+  ttsEnabledRef.current = ttsEnabled;
   const isListeningRef = useRef(false);
   const isStartingRef = useRef(false);
   const coldBootDoneRef = useRef(false);
@@ -298,6 +300,10 @@ export const OperatorScreen: React.FC = () => {
       ) {
         checkConnection();
         checkAccessibility();
+        AndroidNative.wakeWord.isRunning().then((running) => {
+          setWakeWordEnabled(running);
+          wakeWordRef.current = running;
+        }).catch(() => {});
       } else if (nextAppState === 'background') {
         // App backgrounded: release manual speech recognizer cleanly
         AndroidNative.speech.stop().catch(() => {});
@@ -329,6 +335,12 @@ export const OperatorScreen: React.FC = () => {
       }
     });
 
+    const unsubWakeStatus = AndroidNative.wakeWord.onStatusChanged((enabled) => {
+      console.log('[PocketAI] WakeWord status changed from Android service:', enabled);
+      setWakeWordEnabled(enabled);
+      wakeWordRef.current = enabled;
+    });
+
     // 4. Speech Recognizer event listeners
     const unsubResult = AndroidNative.speech.onResult((text) => {
       console.log('[PocketAI] Recognized Speech Text:', text);
@@ -353,6 +365,7 @@ export const OperatorScreen: React.FC = () => {
     return () => {
       appStateSub.remove();
       unsubWakeWord();
+      unsubWakeStatus();
       unsubResult();
       unsubPartial();
       unsubError();
@@ -383,13 +396,31 @@ export const OperatorScreen: React.FC = () => {
 
     setLoading(true);
     setExecutionMessage('');
+    const hasSilentPhrase =
+      /(?:(?:don'?t|do\s+not|stop)\s+(?:speak(?:ing)?|talk(?:ing)?|reply(?:ing)?|respond(?:ing)?)|without\s+speaking|be\s+quiet|shut\s+up|mute\s+yourself|turn\s+off\s+jackie)/i.test(
+        textToRun
+      );
+
     try {
       const response = await apiClient.sendQuery(textToRun);
       setLatestResponse(response);
 
+      const shouldSilence = hasSilentPhrase || Boolean(response.silent_mode);
+      if (shouldSilence) {
+        console.log('[PocketAI] Silent modifier detected: muting TTS and turning off Jackie listener');
+        AndroidNative.tts.stop().catch(() => {});
+        setTtsEnabled(false);
+        ttsEnabledRef.current = false;
+        setWakeWordEnabled(false);
+        wakeWordRef.current = false;
+        AndroidNative.wakeWord.stop().catch(() => {});
+      }
+
       if (response.status === 'executed' && response.calls.length > 0) {
         // Automatically execute confident action via Android Native Bridge
-        await executeCall(response.calls[0]);
+        await executeCall(response.calls[0], shouldSilence);
+      } else if (shouldSilence && response.status === 'executed') {
+        setExecutionMessage('🔇 Muted voice & turned off Jackie.');
       }
     } catch (err: any) {
       Alert.alert('Operator Error', err.message || 'Failed to communicate with Needle engine.');
@@ -401,7 +432,7 @@ export const OperatorScreen: React.FC = () => {
     }
   };
 
-  const executeCall = async (call: FunctionCall) => {
+  const executeCall = async (call: FunctionCall, suppressTts: boolean = false) => {
     try {
       const resolved = call.arguments._resolved_android;
       const actionKey = JSON.stringify(resolved || call);
@@ -422,7 +453,7 @@ export const OperatorScreen: React.FC = () => {
         setExecutionMessage(msg);
       }
 
-      if (ttsEnabled && msg) {
+      if (!suppressTts && ttsEnabledRef.current && msg) {
         const spoken = msg.replace(/^[✓✗⚙️⚡🔊🔇🦾]\s*/, '').trim();
         AndroidNative.tts.speak(spoken).catch((e) => {
           console.warn('[PocketAI] TTS feedback warning:', e);
@@ -431,7 +462,7 @@ export const OperatorScreen: React.FC = () => {
     } catch (e: any) {
       const errMsg = e.message || 'Execution failed';
       setExecutionMessage(`✗ Execution failed: ${errMsg}`);
-      if (ttsEnabled) {
+      if (!suppressTts && ttsEnabledRef.current) {
         AndroidNative.tts.speak(`Action failed: ${errMsg}`).catch(() => {});
       }
       Alert.alert('Action Error', errMsg);
