@@ -234,3 +234,30 @@ def test_normal_command_not_silent(agent):
     assert res.status == "executed"
     assert res.silent_mode is False
     assert res.calls[0].name == "open_camera"
+
+
+def test_play_songs_from_youtubes(agent):
+    res = agent.process_query("play songs from youtubes")
+    assert res.status == "executed"
+    assert res.calls[0].name == "search_youtube"
+    resolved = ActionExecutor.resolve_action(res.calls[0].name, res.calls[0].arguments)
+    assert resolved["android_action"] == "SEARCH_YOUTUBE"
+    assert resolved["query"] == "songs"
+
+
+def test_play_songs_from_spotify(agent):
+    res = agent.process_query("play Tamil songs from spotify")
+    assert res.status == "executed"
+    assert res.calls[0].name == "search_spotify"
+    resolved = ActionExecutor.resolve_action(res.calls[0].name, res.calls[0].arguments)
+    assert resolved["android_action"] == "SEARCH_SPOTIFY"
+    assert "tamil" in resolved["query"].lower()
+
+
+def test_play_lofi_on_spotify(agent):
+    res = agent.process_query("play lofi beats on spotify")
+    assert res.status == "executed"
+    assert res.calls[0].name == "search_spotify"
+    resolved = ActionExecutor.resolve_action(res.calls[0].name, res.calls[0].arguments)
+    assert resolved["android_action"] == "SEARCH_SPOTIFY"
+    assert "lofi" in resolved["query"].lower()
