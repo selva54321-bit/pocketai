@@ -162,7 +162,7 @@ public class WakeWordService extends Service implements RecognitionListener {
             return START_STICKY;
         }
 
-        // Start Foreground Notification
+        // Start Foreground Notification with "Turn Off Jackie" action
         createNotificationChannel();
         Intent openAppIntent = new Intent(this, MainActivity.class);
         openAppIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -173,12 +173,22 @@ public class WakeWordService extends Service implements RecognitionListener {
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
+        Intent stopIntent = new Intent(this, WakeWordService.class);
+        stopIntent.setAction(ACTION_STOP);
+        PendingIntent stopPendingIntent = PendingIntent.getService(
+            this,
+            101,
+            stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("PocketAI Jackie Voice Active")
             .setContentText("Listening for 'Hey Jackie' while screen is ON")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
+            .addAction(android.R.drawable.ic_lock_silent_mode, "Turn Off Jackie", stopPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build();
 
@@ -189,6 +199,7 @@ public class WakeWordService extends Service implements RecognitionListener {
         }
 
         isServiceRunning = true;
+        AndroidOperatorModule.emitWakeWordStatusChanged(true);
         Log.i(TAG, "WakeWordService started as foreground service (Screen-ON Hands-Free)");
 
         if (isScreenOn && !isPausedForManualMic) {
@@ -354,6 +365,7 @@ public class WakeWordService extends Service implements RecognitionListener {
 
     private void stopServiceInternal() {
         isServiceRunning = false;
+        isPausedForManualMic = false;
         mainHandler.removeCallbacksAndMessages(null);
         cleanupRecognizer();
         if (isReceiverRegistered) {
@@ -362,6 +374,7 @@ public class WakeWordService extends Service implements RecognitionListener {
             } catch (Exception ignored) {}
             isReceiverRegistered = false;
         }
+        AndroidOperatorModule.emitWakeWordStatusChanged(false);
         stopForeground(true);
         stopSelf();
     }
