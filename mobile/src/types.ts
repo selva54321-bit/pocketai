@@ -17,6 +17,7 @@ export interface AgentResponse {
     decode_tps?: number;
     peak_ram_mb?: number;
   };
+  silent_mode?: boolean;
 }
 
 export interface NotificationPayload {
