@@ -212,3 +212,25 @@ def test_api_endpoints(client):
     assert data["status"] in ["executed", "needs_confirmation"]
     assert data["calls"][0]["name"] == "toggle_flashlight"
     assert data["calls"][0]["arguments"]["_resolved_android"]["android_action"] == "TOGGLE_FLASHLIGHT"
+
+
+def test_silent_modifier_youtube(agent):
+    res = agent.process_query("play song in youtube and dont speak")
+    assert res.status == "executed"
+    assert res.silent_mode is True
+    assert len(res.calls) > 0
+    assert res.calls[0].name == "search_youtube"
+
+
+def test_silent_modifier_standalone(agent):
+    res = agent.process_query("don't speak")
+    assert res.status == "executed"
+    assert res.silent_mode is True
+    assert res.calls == []
+
+
+def test_normal_command_not_silent(agent):
+    res = agent.process_query("open camera")
+    assert res.status == "executed"
+    assert res.silent_mode is False
+    assert res.calls[0].name == "open_camera"
