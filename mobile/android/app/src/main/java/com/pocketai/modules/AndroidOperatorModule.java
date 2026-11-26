@@ -552,20 +552,32 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
                 query = "songs";
             }
 
-            Intent ytIntent = new Intent(Intent.ACTION_SEARCH);
+            Intent ytIntent = new Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(query))
+            );
             ytIntent.setPackage("com.google.android.youtube");
-            ytIntent.putExtra("query", query);
-            ytIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ytIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
             if (ytIntent.resolveActivity(reactContext.getPackageManager()) != null) {
                 PocketAIAccessibilityService.requestYouTubeAutoPlay();
                 reactContext.startActivity(ytIntent);
                 promise.resolve("Playing first YouTube result for: " + query);
             } else {
-                Intent webYt = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(query)));
-                webYt.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                reactContext.startActivity(webYt);
-                promise.resolve("Opened YouTube in browser for: " + query);
+                Intent fallbackSearch = new Intent(Intent.ACTION_SEARCH);
+                fallbackSearch.setPackage("com.google.android.youtube");
+                fallbackSearch.putExtra("query", query);
+                fallbackSearch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                if (fallbackSearch.resolveActivity(reactContext.getPackageManager()) != null) {
+                    PocketAIAccessibilityService.requestYouTubeAutoPlay();
+                    reactContext.startActivity(fallbackSearch);
+                    promise.resolve("Playing first YouTube result for: " + query);
+                } else {
+                    Intent webYt = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(query)));
+                    webYt.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    reactContext.startActivity(webYt);
+                    promise.resolve("Opened YouTube in browser for: " + query);
+                }
             }
         } catch (Exception e) {
             promise.reject("YOUTUBE_SEARCH_ERROR", e.getMessage());
