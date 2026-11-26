@@ -50,21 +50,29 @@ public class WakeWordService extends Service implements RecognitionListener {
 
     public static volatile boolean isServiceRunning = false;
     public static volatile boolean isAppInForeground = false;
+    public static volatile boolean isPausedForManualMic = false;
     public static volatile boolean isScreenOn = true;
+    public static volatile long lastRecognizerDestroyTime = 0L;
     public static WakeWordService instance = null;
 
-    public static synchronized void pauseListening() {
-        Log.i(TAG, "pauseListening() synchronously invoked");
-        isAppInForeground = true;
+    public static synchronized boolean pauseForManualMic() {
+        Log.i(TAG, "pauseForManualMic() synchronously invoked");
+        isPausedForManualMic = true;
+        boolean hadRecognizer = false;
         if (instance != null) {
             instance.mainHandler.removeCallbacksAndMessages(null);
-            instance.cleanupRecognizer();
+            hadRecognizer = instance.cleanupRecognizer();
         }
+        return hadRecognizer;
+    }
+
+    public static synchronized void pauseListening() {
+        pauseForManualMic();
     }
 
     public static synchronized void resumeListening() {
         Log.i(TAG, "resumeListening() synchronously invoked");
-        isAppInForeground = false;
+        isPausedForManualMic = false;
         if (instance != null && isServiceRunning && isScreenOn) {
             instance.scheduleRestart(600);
         }
@@ -78,9 +86,9 @@ public class WakeWordService extends Service implements RecognitionListener {
     private int consecutiveSilenceCount = 0;
     private boolean isReceiverRegistered = false;
 
-    // Wake word variations: "Hey Jackie", "Jackie", "Hey Jacky", "Jacky", "Hi Jackie", "Ok Jackie", "Hey Jaki"
+    // Wake word variations: "Hey Jackie", "Jackie", "Hey Jacky", "Jacky", "Hi Jackie", "Ok Jackie", etc.
     private static final Pattern WAKE_WORD_PATTERN = Pattern.compile(
-        "(?i).*?\\b(hey\\s+jackie|jackie|hey\\s+jacky|jacky|hi\\s+jackie|hi\\s+jacky|ok\\s+jackie|hey\\s+jaki|hey\\s+jaggy)\\b[,\\s]*(.*)"
+        "(?i).*?\\b((?:hey|hi|ok|hello)?\\s*(?:jackie|jacky|jaki|jaggy|jakki|jacey|jecki|zacky))\\b[,\\s]*(.*)"
     );
 
     // Dynamic screen broadcast receiver: Disables microphone when screen is OFF
@@ -97,7 +105,7 @@ public class WakeWordService extends Service implements RecognitionListener {
                 Log.i(TAG, "Screen went ON: Ready for hands-free voice command");
                 isScreenOn = true;
                 consecutiveSilenceCount = 0;
-                if (isServiceRunning && !isAppInForeground) {
+                if (isServiceRunning && !isPausedForManualMic) {
                     scheduleRestart(400);
                 }
             }
@@ -141,15 +149,15 @@ public class WakeWordService extends Service implements RecognitionListener {
         }
 
         if (ACTION_PAUSE.equals(action)) {
-            Log.i(TAG, "App is in foreground, pausing background wake-word listener");
-            isAppInForeground = true;
+            Log.i(TAG, "Pausing wake-word listener temporarily");
+            isPausedForManualMic = true;
             cleanupRecognizer();
             return START_STICKY;
         }
 
         if (ACTION_RESUME.equals(action)) {
-            Log.i(TAG, "App returned to background/home, resuming wake-word listener");
-            isAppInForeground = false;
+            Log.i(TAG, "Resuming wake-word listener");
+            isPausedForManualMic = false;
             scheduleRestart(400);
             return START_STICKY;
         }
@@ -183,7 +191,7 @@ public class WakeWordService extends Service implements RecognitionListener {
         isServiceRunning = true;
         Log.i(TAG, "WakeWordService started as foreground service (Screen-ON Hands-Free)");
 
-        if (isScreenOn && !isAppInForeground) {
+        if (isScreenOn && !isPausedForManualMic) {
             scheduleRestart(500);
         }
 
@@ -191,7 +199,7 @@ public class WakeWordService extends Service implements RecognitionListener {
     }
 
     private void scheduleRestart(long delayMs) {
-        if (!isScreenOn || !isServiceRunning || isAppInForeground) {
+        if (!isScreenOn || !isServiceRunning || isPausedForManualMic) {
             cleanupRecognizer();
             return;
         }
@@ -200,14 +208,14 @@ public class WakeWordService extends Service implements RecognitionListener {
     }
 
     private void startListeningProcess() {
-        if (!isScreenOn || !isServiceRunning || isAppInForeground) {
+        if (!isScreenOn || !isServiceRunning || isPausedForManualMic) {
             cleanupRecognizer();
             return;
         }
 
         mainHandler.post(() -> {
             try {
-                if (!isScreenOn || !isServiceRunning || isAppInForeground) {
+                if (!isScreenOn || !isServiceRunning || isPausedForManualMic) {
                     cleanupRecognizer();
                     return;
                 }
@@ -236,12 +244,12 @@ public class WakeWordService extends Service implements RecognitionListener {
 
                 speechRecognizer.startListening(recognizerIntent);
                 isListeningActive = true;
-                Log.i(TAG, "WakeWordService: Listening for 'Hey Jackie' (Screen is ON)...");
+                Log.i(TAG, "WakeWordService: Listening for 'Hey Jackie' (Screen is ON, appOpen=" + MainActivity.isForegroundActive + ")...");
             } catch (Exception e) {
                 Log.e(TAG, "startListeningProcess failed: " + e.getMessage());
                 cleanupRecognizer();
-                if (isScreenOn && isServiceRunning && !isAppInForeground) {
-                    scheduleRestart(1500);
+                if (isScreenOn && isServiceRunning && !isPausedForManualMic) {
+                    scheduleRestart(1200);
                 }
             }
         });
@@ -277,10 +285,29 @@ public class WakeWordService extends Service implements RecognitionListener {
             command = matcher.group(2) != null ? matcher.group(2).trim() : "";
         }
 
-        // 3. Stop background recognizer so foreground operator gets microphone cleanly
+        // 3. Stop background recognizer cleanly so foreground operator gets microphone without collision
+        mainHandler.removeCallbacksAndMessages(null);
+        isPausedForManualMic = true;
         cleanupRecognizer();
 
-        // 4. Launch MainActivity to foreground over home screen
+        // 4. If MainActivity is already visible in foreground, emit directly to JS!
+        if (MainActivity.isForegroundActive) {
+            Log.i(TAG, "App is already in foreground: emitting WakeWord event directly to UI (cmd='" + command + "')");
+            final String finalCmd = command;
+            mainHandler.post(() -> AndroidOperatorModule.emitWakeWordEvent(true, finalCmd));
+            if (!command.isEmpty()) {
+                // Full command was spoken in one breath; resume wake-word listening shortly after
+                mainHandler.postDelayed(() -> {
+                    isPausedForManualMic = false;
+                    if (isServiceRunning && isScreenOn) {
+                        scheduleRestart(600);
+                    }
+                }, 1500);
+            }
+            return;
+        }
+
+        // 5. Otherwise launch MainActivity to foreground over home screen
         Intent launchIntent = new Intent(this, MainActivity.class);
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK 
                             | Intent.FLAG_ACTIVITY_SINGLE_TOP 
@@ -305,12 +332,12 @@ public class WakeWordService extends Service implements RecognitionListener {
                 Log.e(TAG, "Failed to launch MainActivity: " + ex.getMessage());
             }
         }
-
-        // MainActivity handles intent and delivers event cleanly without duplicates
     }
 
-    private void cleanupRecognizer() {
+    private boolean cleanupRecognizer() {
+        boolean hadRecognizer = false;
         if (speechRecognizer != null) {
+            hadRecognizer = true;
             try {
                 speechRecognizer.stopListening();
                 speechRecognizer.cancel();
@@ -319,8 +346,10 @@ public class WakeWordService extends Service implements RecognitionListener {
                 Log.w(TAG, "Error cleaning recognizer: " + e.getMessage());
             }
             speechRecognizer = null;
+            lastRecognizerDestroyTime = System.currentTimeMillis();
         }
         isListeningActive = false;
+        return hadRecognizer;
     }
 
     private void stopServiceInternal() {
@@ -354,8 +383,8 @@ public class WakeWordService extends Service implements RecognitionListener {
             }
         }
 
-        if (!matched && isServiceRunning && !isAppInForeground && isScreenOn) {
-            scheduleRestart(400);
+        if (!matched && isServiceRunning && !isPausedForManualMic && isScreenOn) {
+            scheduleRestart(350);
         }
     }
 
@@ -377,19 +406,15 @@ public class WakeWordService extends Service implements RecognitionListener {
     public void onError(int error) {
         isListeningActive = false;
         cleanupRecognizer();
-        if (isServiceRunning && !isAppInForeground && isScreenOn) {
+        if (isServiceRunning && !isPausedForManualMic && isScreenOn) {
             // Silence / No match timeout (6 or 7)
             if (error == 6 || error == 7) {
                 consecutiveSilenceCount++;
-                if (consecutiveSilenceCount >= 3) {
-                    // Back off to 6 seconds instead of continuously locking microphone
-                    Log.d(TAG, "Silence threshold reached (" + consecutiveSilenceCount + "), sleeping 6s");
-                    scheduleRestart(6000);
-                    return;
-                }
-                scheduleRestart(500);
+                // Short backoff (1200ms) so "Hey Jackie" remains highly responsive even when app is open
+                long delay = (consecutiveSilenceCount >= 3) ? 1200L : 400L;
+                scheduleRestart(delay);
             } else {
-                scheduleRestart(1200);
+                scheduleRestart(1000);
             }
         }
     }
