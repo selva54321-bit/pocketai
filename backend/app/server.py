@@ -1,6 +1,7 @@
 import json
 import logging
-from typing import List
+import time
+from typing import Dict, List, Tuple
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -38,6 +39,10 @@ app.add_middleware(
 # Initialize agent singleton
 agent = PocketAIAgent()
 
+# In-memory query deduplication cache: query_clean -> (timestamp, AgentResponse)
+_recent_queries: Dict[str, Tuple[float, AgentResponse]] = {}
+QUERY_DEDUP_WINDOW_SECONDS = 2.0
+
 @app.get("/health")
 def health():
     return {
@@ -49,6 +54,18 @@ def health():
 @app.post("/api/v1/query", response_model=AgentResponse)
 def handle_query(req: AgentRequest):
     """Process a voice or text command and return the actionable Android payload."""
+    clean_query = req.query.strip().lower()
+    now = time.time()
+
+    # Deduplicate rapid identical queries within deduplication window
+    if clean_query in _recent_queries:
+        last_time, cached_response = _recent_queries[clean_query]
+        if now - last_time < QUERY_DEDUP_WINDOW_SECONDS:
+            logger.warning(
+                f"Deduplicating identical query within {now - last_time:.3f}s: '{req.query}'"
+            )
+            return cached_response
+
     try:
         response = agent.process_query(req.query)
 
@@ -62,6 +79,12 @@ def handle_query(req: AgentRequest):
             response.proposed_call.arguments["_resolved_android"] = ActionExecutor.resolve_action(
                 response.proposed_call.name, response.proposed_call.arguments
             )
+
+        _recent_queries[clean_query] = (now, response)
+        # Purge entries older than 30s
+        for k in list(_recent_queries.keys()):
+            if now - _recent_queries[k][0] > 30.0:
+                del _recent_queries[k]
 
         return response
     except Exception as e:
