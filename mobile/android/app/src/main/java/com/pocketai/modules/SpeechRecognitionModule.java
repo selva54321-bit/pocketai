@@ -30,6 +30,8 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
     private SpeechRecognizer speechRecognizer;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private boolean isCurrentlyListening = false;
+    private int startupRetryCount = 0;
+    private long listenStartTime = 0L;
     private long lastResultTime = 0;
     private String lastResultText = "";
 
@@ -63,7 +65,7 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
         // Required for RN built-in Event Emitter
     }
 
-    private void cleanupRecognizer() {
+    private void destroyLocalRecognizerOnly() {
         if (speechRecognizer != null) {
             try {
                 speechRecognizer.stopListening();
@@ -75,6 +77,11 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
             speechRecognizer = null;
         }
         isCurrentlyListening = false;
+    }
+
+    private void cleanupRecognizer() {
+        mainHandler.removeCallbacksAndMessages(null);
+        destroyLocalRecognizerOnly();
         WakeWordService.resumeListening();
     }
 
@@ -89,7 +96,7 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
                 }
 
                 // SYNCHRONOUSLY PAUSE WAKE WORD SERVICE SO MIC HARDWARE IS 100% FREE
-                WakeWordService.pauseListening();
+                boolean hadWakeWordActive = WakeWordService.pauseForManualMic();
 
                 if (!SpeechRecognizer.isRecognitionAvailable(reactContext)) {
                     Log.e(TAG, "SpeechRecognizer is NOT available on this device");
@@ -98,37 +105,71 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
                     return;
                 }
 
-                if (speechRecognizer != null) {
-                    try {
-                        speechRecognizer.destroy();
-                    } catch (Exception ignored) {}
-                    speechRecognizer = null;
+                boolean hadLocalActive = (speechRecognizer != null);
+                destroyLocalRecognizerOnly();
+                startupRetryCount = 0;
+
+                long elapsedSinceWakeDestroy = System.currentTimeMillis() - WakeWordService.lastRecognizerDestroyTime;
+                long handoffDelayMs = 0L;
+                if (hadWakeWordActive || hadLocalActive || elapsedSinceWakeDestroy < 320L) {
+                    handoffDelayMs = Math.max(80L, 320L - Math.max(0L, elapsedSinceWakeDestroy));
                 }
 
-                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(reactContext);
-                speechRecognizer.setRecognitionListener(this);
-
-                Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-                intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-                intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
-                intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, reactContext.getPackageName());
-
-                // EXTENDED SILENCE TIMEOUTS (Prevents premature mic cutoff)
-                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3500L);
-                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L);
-                intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 2000L);
-
-                speechRecognizer.startListening(intent);
-                isCurrentlyListening = true;
-                Log.i(TAG, "SpeechRecognizer started listening successfully");
-                promise.resolve("Listening started");
+                if (handoffDelayMs > 0) {
+                    Log.i(TAG, "Waiting " + handoffDelayMs + "ms for WakeWord audio handoff before starting manual mic");
+                    isCurrentlyListening = true;
+                    mainHandler.postDelayed(() -> beginRecognizerSession(promise), handoffDelayMs);
+                } else {
+                    beginRecognizerSession(promise);
+                }
             } catch (Exception e) {
                 cleanupRecognizer();
                 Log.e(TAG, "startListening failed: " + e.getMessage(), e);
                 promise.reject("START_ERROR", e.getMessage());
             }
         });
+    }
+
+    private void beginRecognizerSession(Promise promise) {
+        try {
+            if (!WakeWordService.isPausedForManualMic) {
+                WakeWordService.pauseForManualMic();
+            }
+            destroyLocalRecognizerOnly();
+
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(reactContext);
+            speechRecognizer.setRecognitionListener(this);
+
+            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+            intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+            intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, reactContext.getPackageName());
+
+            // EXTENDED SILENCE TIMEOUTS (Prevents premature mic cutoff)
+            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3500L);
+            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L);
+            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 2000L);
+
+            listenStartTime = System.currentTimeMillis();
+            speechRecognizer.startListening(intent);
+            isCurrentlyListening = true;
+            Log.i(TAG, "SpeechRecognizer started listening successfully (retry=" + startupRetryCount + ")");
+            if (promise != null) {
+                promise.resolve("Listening started");
+            }
+        } catch (Exception e) {
+            cleanupRecognizer();
+            Log.e(TAG, "beginRecognizerSession failed: " + e.getMessage(), e);
+            if (promise != null) {
+                promise.reject("START_ERROR", e.getMessage());
+            } else {
+                WritableMap map = Arguments.createMap();
+                map.putInt("error", -1);
+                map.putString("message", "Speech recognition failed: " + e.getMessage());
+                sendEvent("onSpeechError", map);
+            }
+        }
     }
 
     @ReactMethod
@@ -148,6 +189,7 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
     // RecognitionListener callbacks
     @Override
     public void onReadyForSpeech(Bundle params) {
+        startupRetryCount = 0;
         Log.i(TAG, "onReadyForSpeech");
         WritableMap map = Arguments.createMap();
         map.putString("status", "ready");
@@ -179,7 +221,17 @@ public class SpeechRecognitionModule extends ReactContextBaseJavaModule implemen
 
     @Override
     public void onError(int error) {
-        Log.w(TAG, "onError code: " + error);
+        Log.w(TAG, "onError code: " + error + " (elapsed=" + (System.currentTimeMillis() - listenStartTime) + "ms)");
+        if ((error == 11 || error == 8)
+                && (System.currentTimeMillis() - listenStartTime < 1000L)
+                && startupRetryCount < 2) {
+            startupRetryCount++;
+            Log.i(TAG, "Transient recognizer busy/disconnected error " + error + ", auto-retrying (" + startupRetryCount + "/2)...");
+            destroyLocalRecognizerOnly();
+            isCurrentlyListening = true;
+            mainHandler.postDelayed(() -> beginRecognizerSession(null), 320L);
+            return;
+        }
         cleanupRecognizer();
         WritableMap map = Arguments.createMap();
         map.putInt("error", error);
