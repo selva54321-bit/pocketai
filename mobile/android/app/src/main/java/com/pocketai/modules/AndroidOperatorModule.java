@@ -499,6 +499,18 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void searchWeb(String query, Promise promise) {
         try {
+            // Defensive redirect: If query asks for YouTube, always open the native YouTube app instead of browser
+            if (query != null && (query.toLowerCase().contains("youtube") || query.toLowerCase().contains("youtubr"))) {
+                String cleanYt = query.replaceAll("(?i)\\b(on|in|from|at|via)\\s+(youtube|youtubr)\\b", "")
+                                      .replaceAll("(?i)\\b(play|search\\s+for|search|watch|listen\\s+to)\\b", "")
+                                      .replaceAll("(?i)\\b(youtube|youtubr)\\b", "")
+                                      .trim();
+                if (cleanYt.isEmpty()) cleanYt = "songs";
+                Log.i(TAG, "Redirecting searchWeb with YouTube query to searchYouTube: " + cleanYt);
+                searchYouTube(cleanYt, promise);
+                return;
+            }
+
             Intent intent = new Intent(Intent.ACTION_WEB_SEARCH);
             intent.putExtra(SearchManager.QUERY, query);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -519,6 +531,14 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void searchYouTube(String query, Promise promise) {
         try {
+            if (query != null) {
+                query = query.replaceAll("(?i)\\b(on|in|from|via)\\s+(youtube|youtubr)\\b", "")
+                             .replaceAll("(?i)\\b(play|search\\s+for|search|watch|listen\\s+to)\\b", "")
+                             .replaceAll("(?i)\\b(youtube|youtubr)\\b", "")
+                             .trim();
+                if (query.isEmpty()) query = "songs";
+            }
+
             Intent ytIntent = new Intent(Intent.ACTION_SEARCH);
             ytIntent.setPackage("com.google.android.youtube");
             ytIntent.putExtra("query", query);
