@@ -46,6 +46,23 @@ from app.tools.routine_tools import execute_routine
 
 logger = logging.getLogger("pocketai.agent")
 
+SILENT_MODIFIER_PATTERN = re.compile(
+    r'(?:(?:[,;\s]+and|\s+then|,|\s+)?\s+(?:please\s+)?(?:don\'?t|do\s+not|stop)\s+(?:speak(?:ing)?|talk(?:ing)?|reply(?:ing)?|respond(?:ing)?)(?:\s+(?:and\s+)?turn\s+off\s+jackie)?'
+    r'|(?:[,;\s]+and|\s+then|,|\s+)?\s+(?:without\s+speaking|be\s+quiet|shut\s+up|mute\s+yourself|turn\s+off\s+jackie))\s*[.!?]*$'
+    r'|^(?:don\'?t|do\s+not|stop)\s+(?:speak(?:ing)?|talk(?:ing)?|reply(?:ing)?|respond(?:ing)?)\s*[.!?]*$'
+    r'|^(?:be\s+quiet|shut\s+up|mute\s+yourself|turn\s+off\s+jackie)\s*[.!?]*$',
+    re.IGNORECASE,
+)
+
+
+def extract_silent_modifier(text: str):
+    """Detect and strip trailing 'and don't speak' / 'turn off jackie' modifiers."""
+    if SILENT_MODIFIER_PATTERN.search(text):
+        stripped = SILENT_MODIFIER_PATTERN.sub('', text).strip(' ,;.')
+        return stripped, True
+    return text, False
+
+
 def sanitize_text(text: str) -> str:
     """Normalize user voice/text query for optimal token matching."""
     # Normalize comma-separated numbers (1,250 -> 1250)
@@ -151,8 +168,17 @@ class PocketAIAgent:
 
     def process_query(self, user_text: str) -> AgentResponse:
         """Process voice/text command from the user and decide on execution."""
-        cleaned_text = sanitize_text(user_text)
+        base_text, should_silence = extract_silent_modifier(user_text)
+        cleaned_text = sanitize_text(base_text)
         if not cleaned_text:
+            if should_silence:
+                return AgentResponse(
+                    status="executed",
+                    confidence=1.0,
+                    calls=[],
+                    message="Muted voice and turned off Jackie.",
+                    silent_mode=True,
+                )
             return AgentResponse(
                 status="unsupported",
                 confidence=0.0,
@@ -210,7 +236,8 @@ class PocketAIAgent:
                 reasoning=reasoning,
                 calls=calls,
                 message=f"Executing {action_desc}",
-                telemetry=telemetry
+                telemetry=telemetry,
+                silent_mode=should_silence,
             )
         elif held:
             candidate = held[0]
@@ -222,7 +249,8 @@ class PocketAIAgent:
                 proposed_call=candidate,
                 calls=[],
                 message=f"Did you mean to {action_desc}? Tap to confirm.",
-                telemetry=telemetry
+                telemetry=telemetry,
+                silent_mode=should_silence,
             )
         else:
             return AgentResponse(
@@ -230,7 +258,8 @@ class PocketAIAgent:
                 confidence=confidence,
                 reasoning=reasoning,
                 message="I can't perform that action on this device.",
-                telemetry=telemetry
+                telemetry=telemetry,
+                silent_mode=should_silence,
             )
 
     def process_notification(self, title: str, text: str, package_name: str) -> Dict[str, Any]:
