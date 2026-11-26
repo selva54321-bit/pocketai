@@ -176,30 +176,51 @@ class ActionExecutor:
         # 15. Web Search
         elif call_name == "search_web":
             raw_query = str(clean_args.get("query", "")).strip()
-            # Defensive redirect: If web search was invoked for a YouTube query, route to YouTube app
-            if re.search(r'\b(youtube|youtubr|yt)\b', raw_query, re.IGNORECASE):
+            # Defensive redirect: If web search was invoked for a YouTube or Spotify query, route to the app
+            if re.search(r'\b(youtube|youtubes|youtubr|yt)\b', raw_query, re.IGNORECASE):
                 yt_target = re.sub(r'\b(?:play|search(?:\s+for)?|watch|listen(?:\s+to)?|find)\s+', '', raw_query, flags=re.IGNORECASE)
-                yt_target = re.sub(r'\b(?:on|in|from|via|with|inside)\s+(?:youtube|youtubr|yt)\b', '', yt_target, flags=re.IGNORECASE).strip()
-                if not yt_target or yt_target.lower() in ("youtube", "youtubr", "yt"):
+                yt_target = re.sub(r'\b(?:on|in|from|via|with|inside)\s+(?:youtube|youtubes|youtubr|yt)\b', '', yt_target, flags=re.IGNORECASE).strip()
+                if not yt_target or yt_target.lower() in ("youtube", "youtubes", "youtubr", "yt"):
                     yt_target = "songs"
                 return {
                     "android_action": "SEARCH_YOUTUBE",
                     "query": yt_target
+                }
+            if re.search(r'\b(spotify|spotifi)\b', raw_query, re.IGNORECASE):
+                sp_target = re.sub(r'\b(?:play|search(?:\s+for)?|watch|listen(?:\s+to)?|find)\s+', '', raw_query, flags=re.IGNORECASE)
+                sp_target = re.sub(r'\b(?:on|in|from|via|with|inside)\s+(?:spotify|spotifi)\b', '', sp_target, flags=re.IGNORECASE).strip()
+                if not sp_target or sp_target.lower() in ("spotify", "spotifi"):
+                    sp_target = "songs"
+                return {
+                    "android_action": "SEARCH_SPOTIFY",
+                    "query": sp_target
                 }
             return {
                 "android_action": "SEARCH_WEB",
                 "query": raw_query
             }
 
-        # 16. YouTube Search
+        # 16. YouTube Search & Auto-Play
         elif call_name == "search_youtube":
             raw_query = str(clean_args.get("query", "")).strip()
-            cleaned_q = re.sub(r'\b(?:on|in|from|via|with|inside)\s+(?:youtube|youtubr|yt)\b', '', raw_query, flags=re.IGNORECASE).strip()
+            cleaned_q = re.sub(r'\b(?:on|in|from|via|with|inside)\s+(?:youtube|youtubes|youtubr|yt)\b', '', raw_query, flags=re.IGNORECASE).strip()
             cleaned_q = re.sub(r'^(?:play|search(?:\s+for)?|watch|listen(?:\s+to)?|find)\s+', '', cleaned_q, flags=re.IGNORECASE).strip()
-            if not cleaned_q or cleaned_q.lower() in ("youtube", "youtubr", "yt"):
+            if not cleaned_q or cleaned_q.lower() in ("youtube", "youtubes", "youtubr", "yt"):
                 cleaned_q = "songs"
             return {
                 "android_action": "SEARCH_YOUTUBE",
+                "query": cleaned_q
+            }
+
+        # 16b. Spotify Search & Auto-Play
+        elif call_name == "search_spotify":
+            raw_query = str(clean_args.get("query", "")).strip()
+            cleaned_q = re.sub(r'\b(?:on|in|from|via|with|inside)\s+(?:spotify|spotifi)\b', '', raw_query, flags=re.IGNORECASE).strip()
+            cleaned_q = re.sub(r'^(?:play|search(?:\s+for)?|watch|listen(?:\s+to)?|find)\s+', '', cleaned_q, flags=re.IGNORECASE).strip()
+            if not cleaned_q or cleaned_q.lower() in ("spotify", "spotifi"):
+                cleaned_q = "songs"
+            return {
+                "android_action": "SEARCH_SPOTIFY",
                 "query": cleaned_q
             }
 
