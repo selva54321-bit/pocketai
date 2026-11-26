@@ -100,6 +100,11 @@ export const AndroidNative = {
     return await AndroidOperator.searchYouTube(query);
   },
 
+  async searchSpotify(query: string): Promise<string> {
+    if (!this.isAvailable) throw new Error('AndroidOperator not available');
+    return await AndroidOperator.searchSpotify(query);
+  },
+
   async openSetting(settingName: string): Promise<string> {
     if (!this.isAvailable) throw new Error('AndroidOperator not available');
     return await AndroidOperator.openSetting(settingName);
@@ -200,6 +205,8 @@ export const AndroidNative = {
         return await this.searchWeb(action.query);
       case 'SEARCH_YOUTUBE':
         return await this.searchYouTube(action.query);
+      case 'SEARCH_SPOTIFY':
+        return await this.searchSpotify(action.query);
       case 'OPEN_SETTING':
         return await this.openSetting(action.setting_name);
       case 'SET_BATTERY_SAVER':
