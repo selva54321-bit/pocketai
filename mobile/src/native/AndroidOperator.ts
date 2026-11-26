@@ -1,7 +1,7 @@
 import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
 import { prioritizeNotifications } from '../utils/notificationScorer';
 
-const { AndroidOperator, SpeechRecognition, TextToSpeech } = NativeModules;
+const { AndroidOperator, SpeechRecognition, TextToSpeech, PocketAIAgent } = NativeModules;
 const speechEmitter = SpeechRecognition ? new NativeEventEmitter(SpeechRecognition) : null;
 const operatorEmitter = AndroidOperator ? new NativeEventEmitter(AndroidOperator) : null;
 
@@ -337,6 +337,39 @@ export const AndroidNative = {
     async isSpeaking(): Promise<boolean> {
       if (!TextToSpeech) return false;
       return await TextToSpeech.isSpeaking();
+    }
+  },
+
+  // Embedded In-Process Python AI Agent (Chaquopy + Needle 3)
+  agent: {
+    isAvailable: Platform.OS === 'android' && Boolean(PocketAIAgent),
+
+    async warmUp(): Promise<boolean> {
+      if (!PocketAIAgent) return false;
+      return await PocketAIAgent.warmUp();
+    },
+
+    async checkHealth(): Promise<{ status: string; agent: string; embedded: boolean }> {
+      if (!PocketAIAgent) throw new Error('PocketAIAgent native module missing');
+      return await PocketAIAgent.checkHealth();
+    },
+
+    async query(queryText: string): Promise<any> {
+      if (!PocketAIAgent) throw new Error('PocketAIAgent native module missing');
+      const jsonStr = await PocketAIAgent.query(queryText);
+      return JSON.parse(jsonStr);
+    },
+
+    async processNotification(title: string, text: string, packageName: string): Promise<any> {
+      if (!PocketAIAgent) throw new Error('PocketAIAgent native module missing');
+      const jsonStr = await PocketAIAgent.processNotification(title, text, packageName);
+      return JSON.parse(jsonStr);
+    },
+
+    async prioritizeNotifications(notifications: any[]): Promise<any[]> {
+      if (!PocketAIAgent) return [];
+      const jsonStr = await PocketAIAgent.prioritizeNotifications(JSON.stringify(notifications));
+      return JSON.parse(jsonStr);
     }
   },
 
