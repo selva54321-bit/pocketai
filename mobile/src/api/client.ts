@@ -1,4 +1,5 @@
 import { AgentResponse, NotificationPayload, NotificationAnalysis } from '../types';
+import { AndroidNative } from '../native/AndroidOperator';
 
 export class PocketAIClient {
   private baseUrl: string;
@@ -10,6 +11,10 @@ export class PocketAIClient {
     this.wsUrl = `ws://${host}:${port}/ws`;
   }
 
+  get isEmbedded(): boolean {
+    return AndroidNative.agent.isAvailable;
+  }
+
   setEndpoint(host: string, port: number = 8000) {
     this.baseUrl = `http://${host}:${port}`;
     this.wsUrl = `ws://${host}:${port}/ws`;
@@ -17,6 +22,15 @@ export class PocketAIClient {
   }
 
   async checkHealth(): Promise<boolean> {
+    if (this.isEmbedded) {
+      try {
+        const res = await AndroidNative.agent.checkHealth();
+        return res.status === 'healthy';
+      } catch (e) {
+        console.warn('[PocketAI] Embedded agent health check error:', e);
+        return false;
+      }
+    }
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2000);
@@ -31,6 +45,9 @@ export class PocketAIClient {
   }
 
   async sendQuery(query: string, retriesLeft: number = 1): Promise<AgentResponse> {
+    if (this.isEmbedded) {
+      return await AndroidNative.agent.query(query);
+    }
     try {
       const res = await fetch(`${this.baseUrl}/api/v1/query`, {
         method: 'POST',
@@ -45,7 +62,6 @@ export class PocketAIClient {
       return await res.json();
     } catch (err: any) {
       if (retriesLeft > 0) {
-        // Wait 350ms and retry once in case of transient socket drop
         await new Promise((resolve) => setTimeout(resolve, 350));
         return this.sendQuery(query, retriesLeft - 1);
       }
@@ -59,6 +75,18 @@ export class PocketAIClient {
   }
 
   async analyzeNotification(notification: NotificationPayload): Promise<NotificationAnalysis> {
+    if (this.isEmbedded) {
+      const data = await AndroidNative.agent.processNotification(
+        notification.title || '',
+        notification.text || '',
+        notification.package_name || ''
+      );
+      return {
+        ...data,
+        raw: notification,
+      };
+    }
+
     const res = await fetch(`${this.baseUrl}/api/v1/notification`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -77,6 +105,15 @@ export class PocketAIClient {
   }
 
   async prioritizeNotifications(notifications: NotificationPayload[]): Promise<any[]> {
+    if (this.isEmbedded) {
+      try {
+        return await AndroidNative.agent.prioritizeNotifications(notifications);
+      } catch (e) {
+        console.warn('[PocketAI] Embedded prioritize failed:', e);
+        return [];
+      }
+    }
+
     try {
       const res = await fetch(`${this.baseUrl}/api/v1/notifications/prioritize`, {
         method: 'POST',
