@@ -426,9 +426,7 @@ export const OperatorScreen: React.FC = () => {
       Alert.alert('Operator Error', err.message || 'Failed to communicate with Needle engine.');
     } finally {
       setLoading(false);
-      setTimeout(() => {
-        isCommandExecuting = false;
-      }, 500);
+      isCommandExecuting = false;
     }
   };
 
