@@ -81,6 +81,13 @@ const ACTION_CATEGORIES: ActionCategory[] = [
   },
 ];
 
+// Module-level global lock across all component mounts, navigations, and instances
+let globalLastCommandText = '';
+let globalLastCommandTime = 0;
+let isCommandExecuting = false;
+let globalLastActionKey = '';
+let globalLastActionTime = 0;
+
 export const OperatorScreen: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -343,16 +350,18 @@ export const OperatorScreen: React.FC = () => {
     const textToRun = commandText.trim();
     if (!textToRun) return;
 
-    // Debounce duplicate commands within 2.5 seconds
+    // Module-level global debounce across any and all component instances
     const now = Date.now();
     if (
-      lastExecutedRef.current.text.toLowerCase() === textToRun.toLowerCase() &&
-      now - lastExecutedRef.current.time < 2500
+      (globalLastCommandText.toLowerCase() === textToRun.toLowerCase() && now - globalLastCommandTime < 3000) ||
+      isCommandExecuting
     ) {
-      console.log('[PocketAI] Debouncing duplicate command execution:', textToRun);
+      console.log('[PocketAI] Dropping duplicate command execution (global lock):', textToRun);
       return;
     }
-    lastExecutedRef.current = { text: textToRun, time: now };
+    globalLastCommandText = textToRun;
+    globalLastCommandTime = now;
+    isCommandExecuting = true;
 
     // Immediately release microphone
     AndroidNative.speech.stop().catch(() => {});
@@ -373,12 +382,24 @@ export const OperatorScreen: React.FC = () => {
       Alert.alert('Operator Error', err.message || 'Failed to communicate with Needle engine.');
     } finally {
       setLoading(false);
+      setTimeout(() => {
+        isCommandExecuting = false;
+      }, 500);
     }
   };
 
   const executeCall = async (call: FunctionCall) => {
     try {
       const resolved = call.arguments._resolved_android;
+      const actionKey = JSON.stringify(resolved || call);
+      const now = Date.now();
+      if (actionKey === globalLastActionKey && now - globalLastActionTime < 2500) {
+        console.log('[PocketAI] Dropping duplicate action execution (action lock):', actionKey);
+        return;
+      }
+      globalLastActionKey = actionKey;
+      globalLastActionTime = now;
+
       let msg = '';
       if (resolved) {
         msg = await AndroidNative.executeResolvedAction(resolved);
