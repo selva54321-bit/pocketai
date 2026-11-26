@@ -34,6 +34,36 @@ def test_open_youtube(agent):
     assert resolved["android_action"] == "OPEN_APP"
     assert resolved["package_name"] == "com.google.android.youtube"
 
+def test_play_song_on_youtube(agent):
+    res = agent.process_query("play song on youtube")
+    assert res.status == "executed"
+    call = res.calls[0]
+    assert call.name == "search_youtube"
+    assert call.arguments.get("query") == "song"
+    resolved = ActionExecutor.resolve_action(call.name, call.arguments)
+    assert resolved["android_action"] == "SEARCH_YOUTUBE"
+    assert resolved["query"] == "song"
+
+def test_play_songs_in_youtubr(agent):
+    res = agent.process_query("play songs in youtubr")
+    assert res.status == "executed"
+    call = res.calls[0]
+    assert call.name == "search_youtube"
+    assert call.arguments.get("query") == "songs"
+    resolved = ActionExecutor.resolve_action(call.name, call.arguments)
+    assert resolved["android_action"] == "SEARCH_YOUTUBE"
+    assert resolved["query"] == "songs"
+
+def test_play_lofi_in_youtube(agent):
+    res = agent.process_query("play lo-fi beats in youtube")
+    assert res.status == "executed"
+    call = res.calls[0]
+    assert call.name == "search_youtube"
+    assert call.arguments.get("query") == "lo-fi beats"
+    resolved = ActionExecutor.resolve_action(call.name, call.arguments)
+    assert resolved["android_action"] == "SEARCH_YOUTUBE"
+    assert resolved["query"] == "lo-fi beats"
+
 def test_set_brightness_40_percent(agent):
     res = agent.process_query("Set brightness to 40%.")
     assert res.status in ["executed", "needs_confirmation"]
