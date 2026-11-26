@@ -75,6 +75,30 @@ def sanitize_text(text: str) -> str:
         cleaned = f"{verb} {recipient}{suffix}"
         return cleaned.strip()
 
+    # 3. YouTube commands: Normalize speech typos (youtubr, youtub, you tube, yt) & prepositions (in/from/at -> on)
+    cleaned = re.sub(r'\b(youtubr|youtub|you tube|yt)\b', 'youtube', cleaned, flags=re.IGNORECASE)
+    if re.search(r'\byoutube\b', cleaned, re.IGNORECASE):
+        # Pattern A: 'play/search/watch/listen to/find <target> on/in/from/at youtube'
+        m_yt1 = re.match(r'^(?:play|search(?:\s+for)?|watch|listen(?:\s+to)?|find)\s+(.+?)\s+(?:on|in|from|at|via|with|inside)\s+youtube$', cleaned, re.IGNORECASE)
+        if m_yt1:
+            target = m_yt1.group(1).strip()
+            return f"play {target} on youtube"
+
+        # Pattern B: 'search/play youtube for <target>'
+        m_yt2 = re.match(r'^(?:search|play|find)\s+youtube\s+(?:for\s+)?(.+)$', cleaned, re.IGNORECASE)
+        if m_yt2:
+            target = m_yt2.group(1).strip()
+            return f"play {target} on youtube"
+
+        # Pattern C: 'play on/in youtube <target>'
+        m_yt3 = re.match(r'^play\s+(?:on|in)\s+youtube\s+(.+)$', cleaned, re.IGNORECASE)
+        if m_yt3:
+            target = m_yt3.group(1).strip()
+            return f"play {target} on youtube"
+
+        # Normalize any remaining "in/from/at youtube" to "on youtube"
+        cleaned = re.sub(r'\b(in|from|at|via|with|inside)\s+youtube\b', 'on youtube', cleaned, flags=re.IGNORECASE)
+
     return cleaned.strip()
 
 class PocketAIAgent:
@@ -145,6 +169,27 @@ class PocketAIAgent:
 
         calls = [FunctionCall(name=c["name"], arguments=c.get("arguments", {})) for c in calls_data]
         held = [FunctionCall(name=h["name"], arguments=h.get("arguments", {})) for h in held_data]
+
+        # Post-processing: Ensure YouTube commands always resolve target media query
+        for c in calls:
+            if c.name == "search_youtube":
+                q = str(c.arguments.get("query", "")).strip()
+                if not q or q.lower() in ("youtube", "on youtube", "in youtube"):
+                    m = re.search(r'\b(?:play|search(?:\s+for)?|watch|listen(?:\s+to)?|find)\s+(.+?)\s+on\s+youtube\b', cleaned_text, re.IGNORECASE)
+                    if m:
+                        c.arguments["query"] = m.group(1).strip()
+                    else:
+                        c.arguments["query"] = "songs"
+            elif c.name == "search_web":
+                # Defensive reroute: If search_web was picked for a YouTube query, route to search_youtube
+                if re.search(r'\byoutube\b', cleaned_text, re.IGNORECASE):
+                    c.name = "search_youtube"
+                    m = re.search(r'\b(?:play|search(?:\s+for)?|watch|listen(?:\s+to)?|find)\s+(.+?)\s+on\s+youtube\b', cleaned_text, re.IGNORECASE)
+                    if m:
+                        c.arguments["query"] = m.group(1).strip()
+                    else:
+                        clean_q = re.sub(r'\b(on|in|from|via)?\s*youtube\b', '', str(c.arguments.get("query", "")), flags=re.IGNORECASE).strip()
+                        c.arguments["query"] = clean_q or "songs"
 
         telemetry = {
             "prefill_tps": raw_res.get("prefill_tps"),
