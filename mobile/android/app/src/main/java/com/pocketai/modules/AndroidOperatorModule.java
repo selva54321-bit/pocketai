@@ -672,6 +672,7 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void stopWakeWordService(Promise promise) {
         try {
+            WakeWordService.isServiceRunning = false;
             Intent intent = new Intent(reactContext, WakeWordService.class);
             intent.setAction(WakeWordService.ACTION_STOP);
             reactContext.startService(intent);
@@ -774,6 +775,16 @@ public class AndroidOperatorModule extends ReactContextBaseJavaModule {
             instance.reactContext
                 .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
                 .emit("onWakeWordDetected", map);
+        }
+    }
+
+    public static void emitWakeWordStatusChanged(boolean enabled) {
+        if (instance != null && instance.reactContext.hasActiveReactInstance()) {
+            WritableMap map = Arguments.createMap();
+            map.putBoolean("enabled", enabled);
+            instance.reactContext
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("onWakeWordStatusChanged", map);
         }
     }
 
