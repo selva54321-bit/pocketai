@@ -34,6 +34,7 @@ class AgentResponse:
     proposed_call: Optional[FunctionCall] = None
     message: Optional[str] = None
     telemetry: Optional[Dict[str, Any]] = None
+    silent_mode: bool = False
 
     def model_dump(self) -> Dict[str, Any]:
         return asdict(self)
