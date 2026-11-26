@@ -75,7 +75,7 @@
             android:name=".MainActivity"
             android:label="PocketAI"
             android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
-            android:launchMode="singleTask"
+            android:launchMode="singleInstance"
             android:windowSoftInputMode="adjustResize"
             android:exported="true">
             <intent-filter>
