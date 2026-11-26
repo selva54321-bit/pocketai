@@ -5,6 +5,12 @@ const { AndroidOperator, SpeechRecognition, TextToSpeech } = NativeModules;
 const speechEmitter = SpeechRecognition ? new NativeEventEmitter(SpeechRecognition) : null;
 const operatorEmitter = AndroidOperator ? new NativeEventEmitter(AndroidOperator) : null;
 
+// Module-level deduplication trackers
+let globalLastSpeechResult = '';
+let globalLastSpeechTime = 0;
+let globalLastWakeTime = 0;
+let globalLastWakeCommand = '';
+
 export interface SystemPermissions {
   canWriteSettings: boolean;
   hasDndPolicy: boolean;
@@ -291,7 +297,16 @@ export const AndroidNative = {
     onResult(callback: (text: string) => void) {
       if (!speechEmitter) return () => {};
       const sub = speechEmitter.addListener('onSpeechResult', (e: { text: string }) => {
-        callback(e.text);
+        const text = (e.text || '').trim();
+        if (!text) return;
+        const now = Date.now();
+        if (text.toLowerCase() === globalLastSpeechResult.toLowerCase() && now - globalLastSpeechTime < 2500) {
+          console.log('[PocketAI] Native speech deduplication: ignoring identical speech within 2.5s:', text);
+          return;
+        }
+        globalLastSpeechResult = text;
+        globalLastSpeechTime = now;
+        callback(text);
       });
       return () => sub.remove();
     },
@@ -354,7 +369,17 @@ export const AndroidNative = {
 
     onDetected(callback: (event: { wakeWordTriggered: boolean; commandText: string }) => void) {
       if (!operatorEmitter) return () => {};
-      const sub = operatorEmitter.addListener('onWakeWordDetected', callback);
+      const sub = operatorEmitter.addListener('onWakeWordDetected', (evt: any) => {
+        const cmd = (evt?.commandText || '').trim();
+        const now = Date.now();
+        if (now - globalLastWakeTime < 2000 && cmd.toLowerCase() === globalLastWakeCommand.toLowerCase()) {
+          console.log('[PocketAI] Native wake deduplication: ignoring duplicate wake event within 2s:', cmd);
+          return;
+        }
+        globalLastWakeTime = now;
+        globalLastWakeCommand = cmd;
+        callback(evt);
+      });
       return () => sub.remove();
     }
   },
